@@ -5,8 +5,8 @@ from torchvision.ops import StochasticDepth
 from einops import rearrange
 from typing import List
 
-from .helpers import chunks 
 from .layers_segformer import ResidualAdd, LayerNorm2d, MixMLP, EfficientMultiHeadAttention, OverlapPatchMerging
+from ..helpers import chunks 
 
 class SegFormerEncoderBlock(nn.Sequential):
     """Bloc encodeur de base pour SegFormer à tenseurs complexes."""
