@@ -3,9 +3,9 @@ import torch.nn.functional as F
 from torchcvnn.datasets import PolSFDataset, ALOSDataset
 import logging
 import random
-from torchcvnn.transforms import LogAmplitude
+from torchcvnn.transforms import LogAmplitude, PolSARtoTensor
 from ..transforms import SARContrastiveAugmentations
-from ..utils import ToTensor, PolSARtoTensor
+from ..utils import ToTensor
 import torchvision.transforms.v2 as v2
 import pathlib
 

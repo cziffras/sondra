@@ -70,7 +70,12 @@ def train(config):
 
     # Build the optimizer
     logging.info("= Optimizer")
-    optimizer = optim.get_optimizer(config["optimizer"], model.parameters())
+    optimizer = optim.get_optimizer(config, model.parameters())
+
+    # Build the scheduler
+    logging.info("= Scheduler")
+    steps_per_epoch = len(train_loader)
+    scheduler = optim.get_scheduler(config, optimizer, steps_per_epoch)
 
     # Build the callbacks
     logging_config = config["logging"]
@@ -111,9 +116,15 @@ def train(config):
             f.write(summary_text)
         logging.info(summary_text)
 
+    num_input_dims = len(input_size)
+
     # Définition du callback d'early stopping
     model_checkpoint = training_utils.ModelCheckpoint(
-        model, str(logdir / "best_model.pt"), min_is_best=True
+        model, 
+        optimizer,
+        str(logdir),
+        num_input_dims,
+        min_is_best=True
     )
 
     train_epoch_func = (
@@ -128,14 +139,27 @@ def train(config):
     for e in range(config["nepochs"]):
         # Entraînement pour une époque
         train_metrics =  train_epoch_func(
-            model, train_loader, loss, optimizer, device, accumulation_steps
+            model=model,
+            loader=train_loader,
+            f_loss=loss,
+            optim=optimizer,
+            scheduler=scheduler,
+            device=device,
+            number_classes=num_classes,
+            epoch=e
         )
+        
         train_loss = train_metrics["train_loss"]
 
         # Évaluation sur le set de validation
         valid_metrics =  valid_func(
-            model, train_loader, loss, optimizer, device, accumulation_steps
+            model=model,
+            loader=valid_loader,
+            f_loss=loss,
+            device=device,
+            number_classes=num_classes
         )
+        
         valid_loss = valid_metrics["valid_loss"]
 
         if not contrastive:
@@ -144,9 +168,12 @@ def train(config):
         else:
             accuracy_msg = ""
 
-        updated = model_checkpoint.update(valid_loss)
+        updated = model_checkpoint.update(
+            score=valid_loss,
+            epoch=e
+        )
         logging.info(
-            "[%d/%d] Train loss : %.3f, Test loss : %.3f %s%s"
+            "[%d/%d] Train loss : %.3f, Validation loss : %.3f %s%s"
             % (
                 e,
                 config["nepochs"],
