@@ -3,13 +3,14 @@ import torch.nn.functional as F
 from torchcvnn.datasets import PolSFDataset, ALOSDataset
 import logging
 import random
-from ..transforms import *
+from ..transforms import SARContrastiveAugmentations
 from ..utils import ToTensor, PolSARtoTensor
 import torchvision.transforms.v2 as v2
 import pathlib
 
 
 class PolSFContrastive(ALOSDataset):
+    """Derived class from ALOS"""
     def __init__(self, rootdir: str, transform_contrastive=None, **kwargs):
         root = pathlib.Path(rootdir) / "VOL-ALOS2044980750-150324-HBQR1.1__A"
         super().__init__(root, transform=None, **kwargs)
@@ -100,7 +101,7 @@ def create_polsf_dataset(
         )
     else:
         # Semantic segmentation
-        transform_name = transform_config.get("name", None)
+        transform_name = transform_config.get("name", "SARContrastiveAugmentations")
         transform_params = transform_config.get("params", {})
         transform = eval(f"{transform_name}")(**transform_params)
         
@@ -133,7 +134,12 @@ def create_polsf_dataset(
     return polsf_dataset
 
 
-def get_polsf_dataloaders(data_config, use_cuda, contrastive=False, debug=False):
+def get_polsf_dataloaders(
+        data_config, 
+        use_cuda, 
+        contrastive=False, 
+        debug=False
+    ):
     """
     Creates PolSF dataloaders.
     

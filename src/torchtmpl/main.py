@@ -17,7 +17,7 @@ from torch.utils.tensorboard import SummaryWriter
 from . import models
 from . import optim
 from .data import get_dataloaders
-from .utils import  training_utils
+from .utils import  training_contrastive_utils, training_utils
 
 
 def train(config):
@@ -116,40 +116,52 @@ def train(config):
     )
 
     train_epoch_func = (
-        training_utils.train_one_contrastive_epoch
+        training_contrastive_utils.train_one_contrastive_epoch
         if contrastive
         else training_utils.train_one_epoch
     )
-    test_func = training_utils.test_contrastive if contrastive else training_utils.test
+    valid_func = training_utils.valid_contrastive_epoch if contrastive else training_utils.valid_epoch
 
     accumulation_steps = config["data"].get("accumulation_steps", 1)
 
     for e in range(config["nepochs"]):
         # Entraînement pour une époque
-        train_loss = train_epoch_func(
+        train_metrics =  train_epoch_func(
             model, train_loader, loss, optimizer, device, accumulation_steps
         )
+        train_loss = train_metrics["train_loss"]
 
         # Évaluation sur le set de validation
-        test_loss, accuracy = test_func(model, valid_loader, loss, device)
+        valid_metrics =  valid_func(
+            model, train_loader, loss, optimizer, device, accumulation_steps
+        )
+        valid_loss = valid_metrics["valid_loss"]
 
-        accuracy_msg = ", %.3f%" if accuracy is not None else ""
+        if not contrastive:
+            valid_accuracy = valid_metrics.get("valid_overall_accuracy", None)
+            accuracy_msg = f", {valid_accuracy:.3f}%" if valid_accuracy is not None else ""
+        else:
+            accuracy_msg = ""
 
-        updated = model_checkpoint.update(test_loss)
+        updated = model_checkpoint.update(valid_loss)
         logging.info(
             "[%d/%d] Train loss : %.3f, Test loss : %.3f %s%s"
             % (
                 e,
                 config["nepochs"],
                 train_loss,
-                test_loss,
+                valid_loss,
                 accuracy_msg,
                 "[>> BETTER <<]" if updated else "",
             )
         )
 
         # Mise à jour des dashboards
-        metrics = {"train_loss": train_loss, "test_loss": test_loss}
+        metrics = {"train_loss": train_loss, "valid_loss": valid_loss}
+
+        if not contrastive:
+            metrics["valid_overall_accuracy"] = valid_metrics["valid_overall_accuracy"]
+
         wandb.log(metrics)
 
         # Mise à jour du dashboard TensorBoard
@@ -158,7 +170,7 @@ def train(config):
 
 
 def test(config):
-    raise NotImplementedError("La fonction test n'est pas encore implémentée.")
+    raise NotImplementedError("La fonction test n'est pas encore implémentée voir training_utils.")
 
 
 def main():
