@@ -484,6 +484,10 @@ def generate_unique_logpath(logdir: str, raw_run_name: str) -> str:
         log_path: a non-existent path like logdir/raw_run_name_x
                   where x is an int that is higher than any existing suffix.
     """
+
+    if not os.path.exists(logdir):
+        os.makedirs(logdir)
+
     highest_num = -1
     for item in os.listdir(logdir):
         if item.startswith(raw_run_name + "_") and os.path.isdir(

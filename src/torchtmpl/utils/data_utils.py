@@ -7,8 +7,8 @@ class ToTensor:
         self.dtype = dtype
 
     def __call__(self, image: np.ndarray) -> torch.Tensor:
-        # Convert numpy array to PyTorch tensor and Rearrange dimensions from HWC to CHW
-        tensor = torch.from_numpy(image).permute(2, 0, 1).to(self.dtype)
+        # Convert numpy array to PyTorch tensor and Rearrange dimensions from HWC to CHW .permute(2, 0, 1)
+        tensor = torch.from_numpy(image).to(self.dtype)
         return tensor
 
 class PolSARtoTensor:

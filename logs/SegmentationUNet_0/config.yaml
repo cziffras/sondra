@@ -1,0 +1,34 @@
+data:
+  accumulation_steps: 4
+  batch_size: 8
+  dataset: polsf
+  num_workers: 4
+  patch_size:
+  - 64
+  - 64
+  root_dir: /media/emmanuel/T7/data/sondra/SAN_FRANCISCO_ALOS2
+  valid_ratio: 0.2
+logging:
+  logdir: ./logs
+loss:
+  name: CrossEntropyLoss
+model:
+  activation: relu
+  channels_ratio: 64
+  class: SegmentationUNet
+  contrastive: false
+  downsampling_method: MaxPool
+  dropout: 0.0
+  normalization_method: BatchNorm
+  num_channels: 3
+  num_layers: 4
+  track_running_stats: true
+  upsample_scale_factor: 1
+  upsampling_method: Upsample
+nepochs: 40
+optimizer:
+  algo: AdamW
+transform:
+  name: SARContrastiveAugmentations
+  params: null
+verbose: false

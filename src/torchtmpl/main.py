@@ -16,6 +16,7 @@ from torch.utils.tensorboard import SummaryWriter
 # Local imports
 from . import models
 from . import optim
+from . import losses
 from .data import get_dataloaders
 from .utils import  training_contrastive_utils, training_utils
 
@@ -65,7 +66,7 @@ def train(config):
 
     # Build the loss
     logging.info("= Loss")
-    loss = optim.get_loss(config["loss"]["name"])
+    loss = losses.get_loss(config["loss"]["name"])
 
     # Build the optimizer
     logging.info("= Optimizer")
