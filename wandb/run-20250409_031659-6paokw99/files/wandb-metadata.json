@@ -1,0 +1,44 @@
+{
+  "os": "Linux-6.11.0-21-generic-x86_64-with-glibc2.39",
+  "python": "CPython 3.9.21",
+  "startedAt": "2025-04-09T01:16:59.750203Z",
+  "args": [
+    "configs/baseline.yaml",
+    "train"
+  ],
+  "program": "-m src.torchtmpl.main",
+  "git": {
+    "remote": "git@github.com:cziffras/sondra.git",
+    "commit": "d3455aa149c701acd103a321a7dd16a58a17bf51"
+  },
+  "email": "emb.versailles@gmail.com",
+  "root": "/home/emmanuel/Documents/GitHub/sondra",
+  "host": "emmanuel-OMEN-by-HP-Gaming-Laptop-16-wd0xxx",
+  "executable": "/home/emmanuel/miniconda3/envs/sondra/bin/python",
+  "cpu_count": 10,
+  "cpu_count_logical": 16,
+  "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "61603713024",
+      "used": "50753773568"
+    }
+  },
+  "memory": {
+    "total": "14332334080"
+  },
+  "cpu": {
+    "count": 10,
+    "countLogical": 16
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "memoryTotal": "8585740288",
+      "cudaCores": 3072,
+      "architecture": "Ada"
+    }
+  ],
+  "cudaVersion": "12.6"
+}

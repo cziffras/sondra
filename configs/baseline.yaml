@@ -1,0 +1,36 @@
+data:
+  root_dir: "/mounts/Datasets1/Polarimetric-SanFrancisco/SAN_FRANCISCO_ALOS2/"
+  dataset: polsf
+  batch_size: 8
+  accumulation_steps: 4
+  num_workers: 4
+  valid_ratio: 0.2
+  patch_size: [64, 64]
+
+nepochs: 40
+
+logging:
+  logdir: "./logs"  
+
+model:
+  class: SegmentationUNet
+  num_channels: 3          
+  num_layers: 4               
+  channels_ratio: 64          
+  activation: relu           
+  normalization_method: BatchNorm
+  track_running_stats: true
+  downsampling_method: MaxPool
+  upsampling_method: Upsample
+  dropout: 0.0
+  contrastive: false
+  upsample_scale_factor: 1   
+
+loss:
+  name: CrossEntropyLoss
+
+optimizer:
+  algo: AdamW
+
+verbose: false
+
