@@ -52,7 +52,7 @@ def train_one_epoch(
     device: torch.device,
     number_classes,
     epoch: int,
-    ignore_index,
+    ignore_index=None,
     max_norm=2.5,
 ) -> dict:
     """
@@ -181,7 +181,7 @@ def valid_epoch(
     f_loss: nn.Module,
     device: torch.device,
     number_classes,
-    ignore_index=-100,
+    ignore_index=None,
 ) -> dict:
     """
     Run the valid loop for n_valid_batches minibatches of the dataloader

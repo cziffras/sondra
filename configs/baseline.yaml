@@ -18,23 +18,32 @@ logging:
 
 model:
   class: SegmentationUNet
-  num_channels: 3          
-  num_layers: 4               
-  channels_ratio: 64          
-  activation: relu           
+  contrastive: false
+  num_channels: 4          
+  num_layers: 2               
+  channels_ratio: 16         
+  activation: modReLU          
   normalization_method: BatchNorm
   track_running_stats: true
-  downsampling_method: MaxPool
+  downsampling_method: StridedConv
   upsampling_method: Upsample
-  dropout: 0.0
-  contrastive: false
+  dropout: 0.1
   upsample_scale_factor: 1   
 
 loss:
   name: CrossEntropyLoss
 
 optimizer:
-  algo: AdamW
+  name: AdamW
+  params:
+    lr: 0.005
+    weight_decay: 0.0005
+
+scheduler:
+  name: StepLR
+  params:
+    step_size: 5
+    gamma: 0.9
 
 verbose: false
 

@@ -135,7 +135,7 @@ class UNet(nn.Module):
             else:
                 x = dec(x)
 
-        return x.real # ALAAAAAAAARM : il semble que les masques renvoyés sont complexes et causent une erreur dans la loss CrossEnt, comment est-ce possible????
+        return x
 
     def use_checkpointing(self):
         for i, layer in enumerate(self.encoder_block):
@@ -148,18 +148,20 @@ class UNet(nn.Module):
 
 ################### Segmentation Unet Wrapper #############################
 
-
 class SegmentationUNet(UNet):
     """
     A wrapper for UNet model.
     """
     def __init__(self, cfg, input_size, num_classes):
         
-        activation = modReLU()
+        activation_dict = {
+            "modReLU": modReLU,
+        }
+        
         num_channels = cfg.get("num_channels", 3)
         num_layers = cfg.get("num_layers", 4)
         channels_ratio = cfg.get("channels_ratio", 64)
-        #activation = cfg.get("activation", "modRelu")
+        activation = activation_dict[cfg.get("activation", "modReLu")]()
         normalization_method = cfg.get("normalization_method", "BatchNorm")
         track_running_stats = cfg.get("track_running_stats", True)
         downsampling_method = cfg.get("downsampling_method", "MaxPool")
