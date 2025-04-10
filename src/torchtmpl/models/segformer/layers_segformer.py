@@ -6,7 +6,7 @@ from torchvision.ops import StochasticDepth
 from einops import rearrange
 from typing import List, Iterable, Tuple
 
-from .helpers import chunks 
+from ..helpers import chunks 
 
 class LayerNorm2d(nn.Module):
     """Layer Normalization pour les tenseurs 2D à valeurs complexes."""
@@ -114,4 +114,19 @@ class ResidualAdd(nn.Module):
         return x
 
 
+class SegFormerSegmentationHead(nn.Module):
+    """Tête de segmentation pour le SegFormer à tenseurs complexes."""
+    def __init__(self, channels: int, num_classes: int, num_features: int = 4):
+        super().__init__()
+        self.fuse = nn.Sequential(
+            nn.Conv2d(channels * num_features, channels, kernel_size=1, bias=False, dtype=torch.complex64),
+            modReLU(),
+            BatchNorm2d(channels)
+        )
+        self.predict = nn.Conv2d(channels, num_classes, kernel_size=1, dtype=torch.complex64)
 
+    def forward(self, features: List[Tensor]) -> Tensor:
+        x = torch.cat(features, dim=1)
+        x = self.fuse(x)
+        x = self.predict(x)
+        return x
