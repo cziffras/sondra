@@ -24,7 +24,7 @@ model:
   channels_ratio: 16         
   activation: modReLU          
   normalization_method: BatchNorm
-  track_running_stats: true
+  track_running_stats: false
   downsampling_method: StridedConv
   upsampling_method: Upsample
   dropout: 0.1
@@ -36,14 +36,14 @@ loss:
 optimizer:
   name: AdamW
   params:
-    lr: 0.05
+    lr: 0.005
     weight_decay: 0.0005
 
 scheduler:
   name: StepLR
   params:
     step_size: 5
-    gamma: 0.9
+    gamma: 1
 
 verbose: false
 

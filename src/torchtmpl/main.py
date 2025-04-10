@@ -138,18 +138,13 @@ def train(config):
 
     for e in range(config["nepochs"]):
         # Entraînement pour une époque
-        train_metrics =  train_epoch_func(
+        train_loss =  train_epoch_func(
             model=model,
             loader=train_loader,
             f_loss=loss,
-            optim=optimizer,
-            scheduler=scheduler,
-            device=device,
-            number_classes=num_classes,
-            epoch=e
+            optimizer=optimizer,
+            device=device
         )
-        
-        train_loss = train_metrics["train_loss"]
 
         # Évaluation sur le set de validation
         valid_metrics =  valid_func(

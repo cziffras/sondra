@@ -18,136 +18,57 @@ from .metrics_utils import (
     normalize_confusion_matrix
 )
 
-def train_one_epoch(
-    model: nn.Module,
-    loader: torch.utils.data.DataLoader,
-    f_loss: nn.Module,
-    optim: torch.optim.Optimizer,
-    scheduler: torch.optim.lr_scheduler,
-    device: torch.device,
-    number_classes,
-    epoch: int,
-    ignore_index=None,
-    max_norm=2.5,
-) -> dict:
+def train_one_epoch(model, loader, f_loss, optimizer, device, accumulation_steps=1):
     """
-    Run the training loop for nsteps minibatches of the dataloader
+    Train a model for one epoch, iterating over the loader
+    using the f_loss to compute the loss and the optimizer
+    to update the parameters of the model.
+    Arguments :
+        model     -- A torch.nn.Module object
+        loader    -- A torch.utils.data.DataLoader
+        f_loss    -- The loss function, i.e. a loss Module
+        optimizer -- A torch.optim.Optimzer object
+        device    -- A torch.device
 
-    Arguments:
-        model: the model to train
-        loader: an iterable dataloader
-        f_loss (nn.Module): the loss
-        optim : an optimizing algorithm
-        device: the device on which to run the code
-
-    Returns:
-        A dictionary with averaged training metrics
+    Returns :
+        The averaged train metrics computed over a sliding window
     """
+
+    # We enter train mode.
+    # This is important for layers such as dropout, batchnorm, ...
     model.train()
 
-    loss_avg = 0
-    gradient_norm = 0
+    total_loss = 0
     num_samples = 0
-    num_batches = 0
     softmax = nn.Softmax(dim=1)
+    for i, (inputs, targets) in (pbar := tqdm.tqdm(enumerate(loader))):
 
-    size = np.setdiff1d(np.arange(0, number_classes), np.array([ignore_index]))
-    conf_matrix_accum = np.zeros((len(size), len(size)))
+        inputs, targets = inputs.to(device), targets.to(device)
 
-    for data in tqdm.tqdm(loader):
-        if isinstance(data, tuple) or isinstance(data, list):
-            inputs, labels = data
-            labels = labels.to(device)
-        else:
-            inputs = data
+        # Compute the forward propagation
+        outputs = model(inputs)
 
-        inputs = Variable(inputs, requires_grad=False).to(device)
-        # Forward propagate through the model
-        pred_outputs = model(inputs)
+        outputs = softmax(torch.abs(outputs).type(torch.float64))
 
-        pred_outputs = softmax(torch.abs(pred_outputs).type(torch.float64))
+        loss = f_loss(outputs, targets)
 
-        loss = f_loss(
-            pred_outputs,
-            labels.type(torch.int64),
-        )
-
-        predictions_flat = pred_outputs.argmax(dim=1).cpu().numpy().flatten()
-        labels_flat = labels.cpu().numpy().flatten()
-
-        # Update confusion matrix
-        batch_cm = compute_batch_confusion_matrix(
-            predictions=predictions_flat,
-            labels=labels_flat,
-            ignore_index=ignore_index,
-            size=size,
-        )
-        conf_matrix_accum += batch_cm
-
-        # Backward pass and update
-        optim.zero_grad()
+        # Backward
+        loss = loss / accumulation_steps
         loss.backward()
 
-        # Clip gradients to prevent the exploding gradient problem
-        torch.nn.utils.clip_grad_norm_(
-            model.parameters(), max_norm=max_norm, norm_type=2
-        )
-
-        # Compute the norm of the gradients
-        total_norm = np.sqrt(
-            sum(
-                p.grad.data.norm(2).item() ** 2
-                for p in model.parameters()
-                if p.grad is not None
-            )
-        )
-        gradient_norm += total_norm
-
-        optim.step()
-        if isinstance(
-            scheduler,
-            (
-                torch.optim.lr_scheduler.CyclicLR,
-                torch.optim.lr_scheduler.OneCycleLR,
-                torch.optim.lr_scheduler.CosineAnnealingLR,
-            ),
-        ):
-            scheduler.step()
-        elif isinstance(
-            scheduler, torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
-        ):
-            scheduler.step(epoch + num_batches / len(loader))
-
+        # Update the metrics
+        # We here consider the loss is batch normalized
+        total_loss += inputs.shape[0] * loss.item()
         num_samples += inputs.shape[0]
-        num_batches += 1
-        loss_avg += inputs.shape[0] * loss.item()
 
-        del loss, pred_outputs, inputs
+        if (i + 1) % accumulation_steps == 0 or (i + 1) == len(loader):
+            # Optimize
+            optimizer.step()
+            optimizer.zero_grad()
+            pbar.set_description(f"Train loss : {total_loss/num_samples:.4f}")
 
-    torch.cuda.empty_cache()
+    return total_loss / num_samples
 
-    metrics = {
-        "train_loss": loss_avg / num_samples,
-        "gradient_norm": gradient_norm / num_batches,
-    }
-
-    overall_accuracy = compute_overall_accuracy(conf_matrix_accum)
-    kappa_score = compute_kappa(conf_matrix_accum)
-    metrics_classif = compute_classification_metrics(conf_matrix_accum, ignore_index)
-    metrics["train_overall_accuracy"] = 100 * overall_accuracy
-    metrics["train_kappa_score"] = 100 * kappa_score
-    metrics["train_macro_precision"] = 100 * metrics_classif["macro_precision"]
-    metrics["train_macro_recall"] = 100 * metrics_classif["macro_recall"]
-    metrics["train_macro_f1"] = 100 * metrics_classif["macro_f1"]
-    metrics["train_precision_per_class"] = 100 * metrics_classif["precision_per_class"]
-    metrics["train_recall_per_class"] = 100 * metrics_classif["recall_per_class"]
-    metrics["train_f1_per_class"] = 100 * metrics_classif["f1_per_class"]
-
-    iou_classes, mean_iou = compute_iou(conf_matrix_accum)
-    metrics["train_iou_per_class"] = 100 * iou_classes
-    metrics["train_mean_iou"] = 100 * mean_iou
-
-    return metrics
 
 
 def valid_epoch(
