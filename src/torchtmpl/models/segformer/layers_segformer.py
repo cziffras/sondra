@@ -9,7 +9,13 @@ from typing import List, Iterable, Tuple
 from ..helpers import chunks 
 
 class LayerNorm2d(nn.Module):
-    """Layer Normalization pour les tenseurs 2D à valeurs complexes."""
+    """
+    Layer Normalization for 2d tensors with complex parameters.
+
+    WARNING : 
+    There was an issue with contiguity, apparently solved by using native methods
+    instead of einops.
+    """
     def __init__(self, normalized_shape):
         super().__init__()
         self.ln = LayerNorm(normalized_shape)
@@ -24,7 +30,6 @@ class LayerNorm2d(nn.Module):
         return x
 
 class OverlapPatchMerging(nn.Sequential):
-    """Module de fusion de patches avec chevauchement pour tenseurs complexes."""
     def __init__(
         self, in_channels: int, out_channels: int, patch_size: int, overlap_size: int
     ):
@@ -43,7 +48,6 @@ class OverlapPatchMerging(nn.Sequential):
 
 
 class EfficientMultiHeadAttention(nn.Module):
-    """Attention multi-têtes efficace pour tenseurs complexes."""
     def __init__(self, channels: int, reduction_ratio: int = 1, num_heads: int = 8):
         super().__init__()
         self.reducer = nn.Sequential(
@@ -73,7 +77,7 @@ class EfficientMultiHeadAttention(nn.Module):
 
 
 class MixMLP(nn.Sequential):
-    """MLP with depth-wise for complex tensors"""
+    """MLP with depth-wise convolution for complex tensors"""
     def __init__(self, channels: int, expansion: int = 4):
         super().__init__(
             # Couche dense d'entrée
@@ -115,7 +119,6 @@ class ResidualAdd(nn.Module):
 
 
 class SegFormerSegmentationHead(nn.Module):
-    """Tête de segmentation pour le SegFormer à tenseurs complexes."""
     def __init__(self, channels: int, num_classes: int, num_features: int = 4):
         super().__init__()
         self.fuse = nn.Sequential(

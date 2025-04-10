@@ -9,7 +9,6 @@ from .layers_segformer import ResidualAdd, LayerNorm2d, MixMLP, EfficientMultiHe
 from ..helpers import chunks 
 
 class SegFormerEncoderBlock(nn.Sequential):
-    """Bloc encodeur de base pour SegFormer à tenseurs complexes."""
     def __init__(
         self,
         channels: int,
@@ -36,7 +35,6 @@ class SegFormerEncoderBlock(nn.Sequential):
 
 
 class SegFormerEncoderStage(nn.Module):
-    """Étage d'encodeur SegFormer pour tenseurs complexes."""
     def __init__(
         self,
         in_channels: int,
