@@ -29,7 +29,7 @@ model:
   decoder_channels: 64
   scale_factors: [8, 4, 2, 1]
   drop_prob: 0.1
-  upsample_scale_factor: 1
+  upsample_scale_factor: 4
   contrastive: false
 
 loss:

@@ -1,11 +1,11 @@
 import torch
 import torch.nn as nn
 from torch import Tensor
-from torchvision.ops import StochasticDepth
 from einops import rearrange
 from typing import List
 
 from .layers_segformer import ResidualAdd, LayerNorm2d, MixMLP, EfficientMultiHeadAttention, OverlapPatchMerging
+from ..missing_c_nn_layers import StochasticDepth
 from ..helpers import chunks 
 
 class SegFormerEncoderBlock(nn.Sequential):

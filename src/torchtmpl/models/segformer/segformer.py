@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 from torch import Tensor
-from typing import List, Tuple, Tensor, Dict
+from typing import List, Tuple, Dict
+from torchcvnn.nn.modules import Upsample 
 
 from .decoder_segformer import SegFormerDecoder
 from .encoder_segformer import SegFormerEncoder
@@ -94,7 +95,7 @@ class SegmentationSegformer(SegFormer):
 
         self.upsample_scale_factor: int = cfg.get("upsample_scale_factor", 1)
         if self.upsample_scale_factor != 1:
-            self.upsample_layer = nn.Upsample(
+            self.upsample_layer = Upsample(
                 scale_factor=self.upsample_scale_factor, 
                 mode='bilinear', 
                 align_corners=False
