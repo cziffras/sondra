@@ -1,0 +1,40 @@
+[33mcommit 43e8045d61608c34940a958a7d6a408079a6f0e7[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mtorchcvnn_segformer[m[33m)[m
+Author: Cziffras <117652887+EmmanuelB-CS@users.noreply.github.com>
+Date:   Wed Apr 9 16:15:03 2025 +0200
+
+    (add) : integrate final SegFormer version with wrapper and cleanup
+    
+    Includes:
+    - initial segformer files
+    - wrapper + tutorial + config
+    - removed logs and useless comments
+
+[33mcommit 9276077d535df095093ddc3c24494cddd3d2958f[m
+Author: Cziffras <117652887+EmmanuelB-CS@users.noreply.github.com>
+Date:   Wed Apr 9 14:03:44 2025 +0200
+
+    (fix) : fixing to_tensor_labels in PolSF.py
+
+[33mcommit e893fe9dec48f3b18c07ccd62a0907a70c4d078e[m
+Author: Cziffras <117652887+EmmanuelB-CS@users.noreply.github.com>
+Date:   Wed Apr 9 13:26:53 2025 +0200
+
+    (add & fix) : adding utils from torchcvnn examples and fixing .gitignore for wandb runs
+
+[33mcommit 5ad4c0f743a3cbb7ea5a385dc2c97f1d3ff867ac[m
+Author: Cziffras <117652887+EmmanuelB-CS@users.noreply.github.com>
+Date:   Wed Apr 9 03:21:24 2025 +0200
+
+    (update) : gitignore update to get rid of wandb runs
+
+[33mcommit aa2cb9fba3fbd99d068fabaaf6b22782118b9a6a[m
+Author: Cziffras <117652887+EmmanuelB-CS@users.noreply.github.com>
+Date:   Wed Apr 9 03:18:12 2025 +0200
+
+    first commit
+
+[33mcommit d3455aa149c701acd103a321a7dd16a58a17bf51[m
+Author: cziffras <emb.versailles@gmail.com>
+Date:   Wed Apr 9 00:24:06 2025 +0200
+
+    Initial commit
