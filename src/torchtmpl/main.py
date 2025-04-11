@@ -5,6 +5,7 @@ import logging
 import sys
 import os
 import pathlib
+import json
 
 # External imports
 import yaml
@@ -18,7 +19,7 @@ from . import models
 from . import optim
 from . import losses
 from .data import get_dataloaders
-from .utils import  training_contrastive_utils, training_utils
+from .utils import training_contrastive_utils, training_utils, format_floats_as_str
 
 
 def train(config):
@@ -134,7 +135,7 @@ def train(config):
     )
     valid_func = training_utils.valid_contrastive_epoch if contrastive else training_utils.valid_epoch
 
-    accumulation_steps = config["data"].get("accumulation_steps", 1)
+    accumulation_steps = config["data"].get("accumulation_steps", 1) # Unused right now 
 
     for e in range(config["nepochs"]):
         # Entraînement pour une époque
@@ -161,10 +162,11 @@ def train(config):
         )
         
         valid_loss = valid_metrics["valid_loss"]
+        valid_f1 = format_floats_as_str(valid_metrics["valid_macro_f1"])
 
         if not contrastive:
             valid_accuracy = valid_metrics.get("valid_overall_accuracy", None)
-            accuracy_msg = f", {valid_accuracy:.3f}%" if valid_accuracy is not None else ""
+            accuracy_msg = f", {valid_accuracy:.3f}%, " if valid_accuracy is not None else ""
         else:
             accuracy_msg = ""
 
@@ -173,13 +175,14 @@ def train(config):
             epoch=e
         )
         logging.info(
-            "[%d/%d] Train loss : %.3f, Validation loss : %.3f %s%s"
+            "[%d/%d] Train loss : %.3f, Validation loss : %.3f %s%s%s"
             % (
                 e,
                 config["nepochs"],
                 train_loss,
                 valid_loss,
                 accuracy_msg,
+                json.dumps(valid_f1, ensure_ascii=False, indent=2),
                 "[>> BETTER <<]" if updated else "",
             )
         )

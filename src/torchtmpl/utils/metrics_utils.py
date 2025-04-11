@@ -26,6 +26,7 @@ import os
 from typing import Tuple
 import inspect
 import warnings
+import json
 
 # External imports
 import torch
@@ -45,6 +46,17 @@ from sklearn.metrics import (
 from scipy.optimize import linear_sum_assignment
 from sklearn.cluster import KMeans
 from sklearn.metrics.cluster import adjusted_rand_score
+
+
+def format_floats_as_str(obj):
+    if isinstance(obj, float):
+        return format(obj, ".3f")
+    elif isinstance(obj, dict):
+        return {k: format_floats_as_str(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [format_floats_as_str(item) for item in obj]
+    else:
+        return obj
 
 
 def compute_metrics(

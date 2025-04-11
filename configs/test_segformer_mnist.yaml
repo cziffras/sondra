@@ -1,7 +1,7 @@
 data:
   root_dir: "/media/emmanuel/T7/data/sondra/SAN_FRANCISCO_ALOS2"
   dataset: mnist
-  batch_size: 16
+  batch_size: 32
   accumulation_steps: 4
   num_workers: 4
   valid_ratio: 0.2
@@ -34,7 +34,7 @@ model:
   contrastive: false
 
 loss:
-  name: CrossEntropyLoss
+  name: FocalLoss
 
 optimizer:
   name: AdamW
