@@ -40,10 +40,22 @@ optimizer:
     weight_decay: 0.0005
 
 scheduler:
-  name: StepLR
+  name: OneCycleLR
   params:
     step_size: 5
     gamma: 0.9
+    last_epoch: -1
+  params_cosinelr:
+    eta_min: 0
+    max_epoch: -1
+  params_onecyclelr:
+    max_lr: 0.05
+    pct_start: 0.3
+    anneal_strategy: "cos"
+    cycle_momentum: True
+    max_momentum: True
+    div_factor: 1
+    last_epoch: 7 # every 7 epochs i restart my scheduler
 
 verbose: false
 

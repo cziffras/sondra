@@ -29,6 +29,7 @@ def train_one_epoch(
     epoch: int,
     ignore_index=None,
     max_norm=2.5,
+    accumulation_steps: int = 1,
 ) -> dict:
     """
     Run the training loop for nsteps minibatches of the dataloader

@@ -5,7 +5,7 @@ data:
   accumulation_steps: 4
   num_workers: 4
   valid_ratio: 0.2
-  patch_size: [64, 64]
+  patch_size: [28, 28]   
   segmentation: True
 
 transform:
@@ -19,18 +19,18 @@ logging:
 
 model:
   class: SegmentationSegformer
-  num_channels: 3
-  widths: [8, 16, 32, 64]
-  depths: [3, 4, 6, 3]
-  all_num_heads: [1, 2, 4, 8]
-  patch_sizes: [7, 3, 3, 3]
-  overlap_sizes: [4, 2, 2, 2]
-  reduction_ratios: [8, 4, 2, 1]
-  mlp_expansions: [4, 4, 4, 4]
-  decoder_channels: 64
-  scale_factors: [8, 4, 2, 1]
+  num_channels: 1                # MNIST is 1 channel
+  widths: [4, 8, 16, 32]        
+  depths: [2, 2, 2, 2]           
+  all_num_heads: [1, 1, 2, 2]    
+  patch_sizes: [3, 3, 3, 3]      
+  overlap_sizes: [1, 1, 1, 1]    
+  reduction_ratios: [4, 2, 1, 1] 
+  mlp_expansions: [2, 2, 2, 2]   
+  decoder_channels: 32          
+  scale_factors: [1, 1, 1, 1]    
   drop_prob: 0.1
-  upsample_scale_factor: 4
+  upsample_scale_factor: 1      
   contrastive: false
 
 loss:

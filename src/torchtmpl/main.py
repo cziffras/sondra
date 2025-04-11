@@ -46,7 +46,7 @@ def train(config):
         tags=[run_type],
     )
 
-    contrastive = config.get("contrastive", False)
+    contrastive = config["model"].get("contrastive", False)
 
     # Build the dataloaders
     logging.info("= Building the dataloaders")
