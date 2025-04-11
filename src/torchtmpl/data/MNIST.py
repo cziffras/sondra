@@ -78,7 +78,7 @@ def show(imgs):
         axs[0, i].set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
 
 
-def test_MNIST_dataloaders():
+def test_mnist_dataloaders():
     data_config = {
         "root_dir": './data',
         "batch_size": 32,
