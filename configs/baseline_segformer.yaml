@@ -1,6 +1,6 @@
 data:
   root_dir: "/media/emmanuel/T7/data/sondra/SAN_FRANCISCO_ALOS2"
-  dataset: mnist
+  dataset: polsf
   batch_size: 16
   accumulation_steps: 4
   num_workers: 4
@@ -12,7 +12,7 @@ transform:
   name: "SARContrastiveAugmentations"
   params:
 
-nepochs: 40
+nepochs: 12
 
 logging:
   logdir: "./logs"
@@ -34,7 +34,7 @@ model:
   contrastive: false
 
 loss:
-  name: CrossEntropyLoss
+  name: FocalLoss
 
 optimizer:
   name: AdamW

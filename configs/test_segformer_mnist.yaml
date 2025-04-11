@@ -1,5 +1,5 @@
 data:
-  root_dir: "/media/emmanuel/T7/data/sondra/SAN_FRANCISCO_ALOS2"
+  root_dir: "~/data"
   dataset: mnist
   batch_size: 32
   accumulation_steps: 4

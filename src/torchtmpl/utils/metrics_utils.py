@@ -27,6 +27,7 @@ from typing import Tuple
 import inspect
 import warnings
 import json
+import wandb
 
 # External imports
 import torch
@@ -36,6 +37,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.metrics import (
     confusion_matrix,
     jaccard_score,
@@ -48,15 +50,16 @@ from sklearn.cluster import KMeans
 from sklearn.metrics.cluster import adjusted_rand_score
 
 
-def format_floats_as_str(obj):
-    if isinstance(obj, float):
-        return format(obj, ".3f")
-    elif isinstance(obj, dict):
-        return {k: format_floats_as_str(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [format_floats_as_str(item) for item in obj]
-    else:
-        return obj
+def log_confusion_matrix(wandb_run, cm, title="Confusion Matrix", xlabel="Preds", ylabel="Labels"):
+    
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt=".2f", cmap="Blues")
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title)
+  
+    wandb_run.log({"confusion_matrix": wandb.Image(plt)})
+    plt.close()
 
 
 def compute_metrics(

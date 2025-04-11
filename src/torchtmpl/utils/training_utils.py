@@ -27,11 +27,12 @@ def train_one_epoch(
     device: torch.device,
     number_classes,
     epoch: int,
-    ignore_index=None,
+    ignore_index=0,
     max_norm=2.5,
 ) -> dict:
     """
     Run the training loop for nsteps minibatches of the dataloader
+    This does only implement a training epoch for a segmentation task !
 
     Arguments:
         model: the model to train
@@ -156,7 +157,7 @@ def valid_epoch(
     f_loss: nn.Module,
     device: torch.device,
     number_classes,
-    ignore_index=None,
+    ignore_index=0,
 ) -> dict:
     """
     Run the valid loop for n_valid_batches minibatches of the dataloader
@@ -241,7 +242,7 @@ def test_epoch(
     loader,
     device,
     number_classes,
-    ignore_index,
+    ignore_index=0,
     num_samples_to_visualize=5,
 ):
     model.eval()
@@ -444,6 +445,18 @@ class ModelCheckpoint(object):
             self.best_score = score
             return True
         return False
+    
+    def load_best_checkpoint(self) -> int:
+        
+        filepath = os.path.join(self.savepath, "best_model.pt")
+        if not os.path.isfile(filepath):
+            raise FileNotFoundError(f"Checkpoint '{filepath}' not found")
+        checkpoint = torch.load(filepath)
+        self.model.load_state_dict(checkpoint["model_state_dict"])
+        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        self.best_score = checkpoint["loss"]
+        return self.model, self.optimizer, self.best_score
+
 
 
 def generate_unique_logpath(logdir: str, raw_run_name: str) -> str:

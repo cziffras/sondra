@@ -19,10 +19,10 @@ from . import models
 from . import optim
 from . import losses
 from .data import get_dataloaders
-from .utils import training_contrastive_utils, training_utils, format_floats_as_str
+from .utils import training_contrastive_utils, training_utils, log_confusion_matrix
 
 
-def train(config):
+def train(config, wandb_run):
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda") if use_cuda else torch.device("cpu")
 
@@ -30,22 +30,6 @@ def train(config):
         torch.cuda.empty_cache()
 
     logging.info(f"Using device : {device}")
-
-    if config.get("contrastive", False):
-        run_type = "ContrastivePretraining"
-    elif "pretrained_weights" in config.get("model", {}):
-        run_type = "SegmentationFromPretrained"
-    else:
-        run_type = "SegmentationBaseline(NoContrastive)"
-
-    # Initialiser WandB
-    wandb.init(
-        project="segmentation-polsf",
-        entity="SONDRA_2024-2025",
-        config=config,
-        name=run_type + "_" + models.__name__,
-        tags=[run_type],
-    )
 
     contrastive = config["model"].get("contrastive", False)
 
@@ -67,7 +51,7 @@ def train(config):
 
     # Build the loss
     logging.info("= Loss")
-    loss = losses.get_loss(config["loss"]["name"])
+    loss = losses.get_loss(config["loss"]["name"], ignore_index=0)
 
     # Build the optimizer
     logging.info("= Optimizer")
@@ -162,7 +146,6 @@ def train(config):
         )
         
         valid_loss = valid_metrics["valid_loss"]
-        valid_f1 = format_floats_as_str(valid_metrics["valid_macro_f1"])
 
         if not contrastive:
             valid_accuracy = valid_metrics.get("valid_overall_accuracy", None)
@@ -175,36 +158,64 @@ def train(config):
             epoch=e
         )
         logging.info(
-            "[%d/%d] Train loss : %.3f, Validation loss : %.3f %s%s%s"
+            "[%d/%d] Train loss : %.3f, Validation loss : %.3f %s%s"
             % (
                 e,
                 config["nepochs"],
                 train_loss,
                 valid_loss,
                 accuracy_msg,
-                json.dumps(valid_f1, ensure_ascii=False, indent=2),
                 "[>> BETTER <<]" if updated else "",
             )
         )
 
         # Mise à jour des dashboards
-        metrics = {"train_loss": train_loss, "valid_loss": valid_loss}
+        metrics = {
+            "epoch": e,
+            "train_loss": train_loss, 
+            "valid_loss": valid_loss
+        }
 
         if not contrastive:
             metrics["valid_overall_accuracy"] = valid_metrics["valid_overall_accuracy"]
 
-        wandb.log(metrics)
+        wandb_run.log(metrics)
 
-        # Mise à jour du dashboard TensorBoard
         for key, value in metrics.items():
             tensorboard_writer.add_scalar(key, value, e)
+    
+    logging.info("###################### Final evaluation on valid loader ######################")
+
+    model, _, score = model_checkpoint.load_best_checkpoint()
+
+    logging.info(f"Loaded best model with training loss : {score:.3f}")
+
+    test_metrics, _, test_cm = training_utils.test_epoch(
+        model=model,
+        loader=valid_loader,  
+        device=device,
+        number_classes=num_classes,
+        ignore_index=0
+    )
+
+    log_confusion_matrix(
+        wandb_run=wandb_run,
+        cm=test_cm,
+        title="Confusion Matrix",
+        xlabel="Predictions",
+        ylabel="Ground Truth",
+    )
+
+    wandb_run.log(test_metrics)
+
+    logging.info("###################### End of training ######################")
 
 
-def test(config):
-    raise NotImplementedError("La fonction test n'est pas encore implémentée voir training_utils.")
-
+def test(config, model, wandb_run):
+    raise NotImplementedError
 
 def main():
+    
     logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
 
     if len(sys.argv) != 3:
@@ -221,11 +232,27 @@ def main():
     except Exception as e:
         logging.error(f"Erreur lors du chargement du fichier de config: {e}")
         sys.exit(-1)
+    
+    if config.get("contrastive", False):
+        run_type = "ContrastivePretraining"
+    elif "pretrained_weights" in config.get("model", {}):
+        run_type = "SegmentationFromPretrained"
+    else:
+        run_type = "SegmentationBaseline(NoContrastive)"
+
+    # Initialiser WandB
+    wandb_run = wandb.init(
+            project="segmentation-polsf",
+            entity="SONDRA_2024-2025",
+            config=config,
+            name=run_type + "_" + models.__name__,
+            tags=[run_type],
+    )
 
     if command == "train":
-        train(config)
+        train(config, wandb_run=wandb_run)
     elif command == "test":
-        test(config)
+        test(config, wandb_run=wandb_run)
     else:
         logging.error(f"Commande inconnue: {command}")
         sys.exit(-1)

@@ -103,4 +103,4 @@ def test_mnist_dataloaders():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    test_MNIST_dataloaders()
+    test_mnist_dataloaders()
