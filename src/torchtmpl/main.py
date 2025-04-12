@@ -19,7 +19,12 @@ from . import models
 from . import optim
 from . import losses
 from .data import get_dataloaders
-from .utils import training_contrastive_utils, training_utils, log_confusion_matrix
+from .utils import (
+    training_contrastive_utils, 
+    training_utils, 
+    log_confusion_matrix,
+    check_model_params_validity,
+)
 
 
 def train(config, wandb_run):
@@ -32,6 +37,9 @@ def train(config, wandb_run):
     logging.info(f"Using device : {device}")
 
     contrastive = config["model"].get("contrastive", False)
+
+    logging.info(f"= Attempting a forward pass with given config")
+    check_model_params_validity(config, use_cuda, contrastive)
 
     # Build the dataloaders
     logging.info("= Building the dataloaders")
