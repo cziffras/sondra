@@ -27,7 +27,7 @@ def get_scheduler(cfg, optimizer, steps_per_epoch):
     elif scheduler_name == "CosineAnnealingLR":
         cfg["scheduler"]["params_cosinelr"]["T_max"] = cfg["nepochs"]
         return CosineAnnealingLR(optimizer, **cfg["scheduler"]["params_cosinelr"])
-    elif scheduler_name == "None":
+    elif scheduler_name is None:
         return None 
     else:
         return eval(

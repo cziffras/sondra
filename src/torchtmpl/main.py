@@ -59,8 +59,11 @@ def train(config, wandb_run):
 
     # Build the loss
     logging.info("= Loss")
-    loss = losses.get_loss(config["loss"]["name"], ignore_index=0)
-
+    if contrastive:
+        loss = losses.get_loss(config["loss"]["name"])
+    else:
+        loss = losses.get_loss(config["loss"]["name"], ignore_index=0)
+        
     # Build the optimizer
     logging.info("= Optimizer")
     optimizer = optim.get_optimizer(config, model.parameters())
@@ -125,23 +128,41 @@ def train(config, wandb_run):
         if contrastive
         else training_utils.train_one_epoch
     )
-    valid_func = training_utils.valid_contrastive_epoch if contrastive else training_utils.valid_epoch
+    valid_func = (
+        training_contrastive_utils.valid_contrastive_epoch 
+        if contrastive 
+        else training_utils.valid_epoch
+    )
 
     accumulation_steps = config["data"].get("accumulation_steps", 1) # Unused right now 
 
     for e in range(config["nepochs"]):
         # Entraînement pour une époque
-        train_metrics =  train_epoch_func(
-            model=model,
-            loader=train_loader,
-            f_loss=loss,
-            optim=optimizer,
-            scheduler=scheduler,
-            device=device,
-            number_classes=num_classes,
-            epoch=e
-        )
+
+        if contrastive: 
+            train_metrics =  train_epoch_func(
+                model=model,
+                loader=train_loader,
+                f_loss=loss,
+                optim=optimizer,
+                scheduler=scheduler,
+                device=device,
+                epoch=e,
+                loss_weights=config["model"].get("loss_weights", None)
+            )
         
+        else: 
+            train_metrics =  train_epoch_func(
+                model=model,
+                loader=train_loader,
+                f_loss=loss,
+                optim=optimizer,
+                scheduler=scheduler,
+                device=device,
+                number_classes=num_classes,
+                epoch=e
+        )
+
         train_loss = train_metrics["train_loss"]
 
         # Évaluation sur le set de validation
@@ -192,31 +213,36 @@ def train(config, wandb_run):
         for key, value in metrics.items():
             tensorboard_writer.add_scalar(key, value, e)
     
-    logging.info("###################### Final evaluation on valid loader ######################")
+    if contrastive :
 
-    model, _, score = model_checkpoint.load_best_checkpoint()
+        logging.info("###################### Finished contrastive pre-training ######################")
+    
+    else: 
+        logging.info("###################### Final evaluation on valid loader ######################")
 
-    logging.info(f"Loaded best model with training loss : {score:.3f}")
+        model, _, score = model_checkpoint.load_best_checkpoint()
 
-    test_metrics, _, test_cm = training_utils.test_epoch(
-        model=model,
-        loader=valid_loader,  
-        device=device,
-        number_classes=num_classes,
-        ignore_index=0
-    )
+        logging.info(f"Loaded best model with training loss : {score:.3f}")
 
-    log_confusion_matrix(
-        wandb_run=wandb_run,
-        cm=test_cm,
-        title="Confusion Matrix",
-        xlabel="Predictions",
-        ylabel="Ground Truth",
-    )
+        test_metrics, _, test_cm = training_utils.test_epoch(
+            model=model,
+            loader=valid_loader,  
+            device=device,
+            number_classes=num_classes,
+            ignore_index=0
+        )
 
-    wandb_run.log(test_metrics)
+        log_confusion_matrix(
+            wandb_run=wandb_run,
+            cm=test_cm,
+            title="Confusion Matrix",
+            xlabel="Predictions",
+            ylabel="Ground Truth",
+        )
 
-    logging.info("###################### End of training ######################")
+        wandb_run.log(test_metrics)
+
+        logging.info("###################### End of training ######################")
 
 
 def test(config, model, wandb_run):

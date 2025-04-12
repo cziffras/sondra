@@ -23,8 +23,10 @@ class SegFormer(nn.Module):
         scale_factors: List[int],
         num_classes: int,
         drop_prob: float = 0.0,
+        contrastive: bool = False
     ):
         super().__init__()
+        self.contrastive = contrastive 
         self.encoder = SegFormerEncoder(
             in_channels,
             widths,
@@ -43,6 +45,16 @@ class SegFormer(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         features = self.encoder(x)
+
+        if self.contrastive: 
+            embeddings = []
+            for feature in features:
+                # (b, c, h, w) -> (b, 1, h, w)
+                feature_avg = feature.mean(dim=1, keepdim=True)
+                embedding = feature_avg.view(feature_avg.size(0), -1) # (b, h*w)
+                embeddings.append(embedding)
+            return embeddings # list of length num_stages of embeddings of size (b, h_i * w_i)
+        
         features = self.decoder(features[::-1])
         segmentation = self.head(features)
         return segmentation
@@ -77,6 +89,7 @@ class SegmentationSegformer(SegFormer):
         drop_prob: float = cfg.get("drop_prob", 0.1)
         decoder_channels: int = cfg.get("decoder_channels", 64)
         scale_factors: List[int] = cfg.get("scale_factors", [8, 4, 2, 1])
+        contrastive: bool  = cfg.get("contrastive", False)
         
         super().__init__(
             in_channels=num_channels,
@@ -91,6 +104,7 @@ class SegmentationSegformer(SegFormer):
             scale_factors=scale_factors,
             num_classes=num_classes,
             drop_prob=drop_prob,
+            contrastive=contrastive
         )
 
         self.upsample_scale_factor: int = cfg.get("upsample_scale_factor", 1)
@@ -115,6 +129,6 @@ class SegmentationSegformer(SegFormer):
             Tensor: Segmentation map of shape (B, num_classes, H_out, W_out)
         """
         segmentation: Tensor = super().forward(x)
-        if hasattr(self, "upsample_layer"):
+        if hasattr(self, "upsample_layer") and not self.contrastive:
             segmentation = self.upsample_layer(segmentation)
         return segmentation

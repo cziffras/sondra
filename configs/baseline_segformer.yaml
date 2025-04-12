@@ -31,10 +31,11 @@ model:
   scale_factors: [8, 4, 2, 1]
   drop_prob: 0.1
   upsample_scale_factor: 4
-  contrastive: false
+  contrastive: True
+  loss_weights: null
 
 loss:
-  name: FocalLoss
+  name: NTXentLoss
 
 optimizer:
   name: AdamW
@@ -43,7 +44,7 @@ optimizer:
     weight_decay: 0.0005
 
 scheduler:
-  name: None
+  name: null
   params:
     step_size: 5
     gamma: 0.9
