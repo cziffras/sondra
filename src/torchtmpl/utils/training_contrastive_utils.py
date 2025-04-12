@@ -153,7 +153,20 @@ def valid_contrastive_epoch(
         # Forward propagate through the model
         out_1, out_2 = model(inputs_1), model(inputs_2)
 
-        loss = f_loss(out_1, out_2)
+        loss = 0.0 
+        if isinstance(out_1, list) and isinstance(out_2, list) and len(out_1) == len(out_2):
+            if loss_weights is not None:
+                loss_weights = loss_weights.tolist()
+                for i in range(len(out_1)):
+                    loss += loss_weights[i] * f_loss(out_1[i], out_2[i])
+                loss /= sum([w.item() for w in loss_weights])
+
+            else:
+                for i in range(len(out_1)):
+                    loss += f_loss(out_1[i], out_2[i])
+                loss /= len(out_1) 
+        else:
+            loss += f_loss(out_1, out_2)
 
         num_samples += inputs_1.shape[0]
         num_batches += 1

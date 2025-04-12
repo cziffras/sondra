@@ -63,7 +63,7 @@ def train(config, wandb_run):
         loss = losses.get_loss(config["loss"]["name"])
     else:
         loss = losses.get_loss(config["loss"]["name"], ignore_index=0)
-        
+
     # Build the optimizer
     logging.info("= Optimizer")
     optimizer = optim.get_optimizer(config, model.parameters())
@@ -166,14 +166,22 @@ def train(config, wandb_run):
         train_loss = train_metrics["train_loss"]
 
         # Évaluation sur le set de validation
-        valid_metrics =  valid_func(
-            model=model,
-            loader=valid_loader,
-            f_loss=loss,
-            device=device,
-            number_classes=num_classes
-        )
-        
+        if contrastive: 
+            valid_metrics =  valid_func(
+                model=model,
+                loader=valid_loader,
+                f_loss=loss,
+                device=device,
+            )
+        else: 
+            valid_metrics =  valid_func(
+                model=model,
+                loader=valid_loader,
+                f_loss=loss,
+                device=device,
+                number_classes=num_classes
+            )
+            
         valid_loss = valid_metrics["valid_loss"]
 
         if not contrastive:
