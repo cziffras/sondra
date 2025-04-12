@@ -1,11 +1,11 @@
 data:
   root_dir: "/media/emmanuel/T7/data/sondra/SAN_FRANCISCO_ALOS2"
   dataset: polsf
-  batch_size: 16
+  batch_size: 32
   accumulation_steps: 4
   num_workers: 4
   valid_ratio: 0.2
-  patch_size: [64, 64]
+  patch_size: [128, 128]
   segmentation: True
 
 transform:
@@ -21,7 +21,7 @@ model:
   class: SegmentationSegformer
   num_channels: 3
   widths: [8, 16, 32, 64]
-  depths: [3, 4, 6, 3]
+  depths: [6, 6, 6, 6]
   all_num_heads: [8, 8, 8, 8]
   patch_sizes: [7, 3, 3, 3]
   overlap_sizes: [4, 2, 2, 2]
@@ -31,11 +31,11 @@ model:
   scale_factors: [8, 4, 2, 1]
   drop_prob: 0.1
   upsample_scale_factor: 4
-  contrastive: True
+  contrastive: False
   loss_weights: null
 
 loss:
-  name: NTXentLoss
+  name: FocalLoss
 
 optimizer:
   name: AdamW
@@ -44,15 +44,13 @@ optimizer:
     weight_decay: 0.0005
 
 scheduler:
-  name: null
+  name: null #CosineAnnealingLR
   params:
     step_size: 5
     gamma: 0.9
     last_epoch: -1
-  params_cosinelr:
     eta_min: 0
     max_epoch: -1
-  params_onecyclelr:
     max_lr: 0.05
     pct_start: 0.1
     anneal_strategy: "linear"

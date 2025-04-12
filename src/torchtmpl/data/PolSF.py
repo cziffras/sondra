@@ -94,7 +94,6 @@ def get_polsf_contrastive_dataset(
 
 def get_transform(data_config):
     transform_args = data_config.get("transform", {})
-
     transform_name = transform_args.get("name", "SARContrastiveAugmentations")
     transform_params = transform_args.get("params", {})
 

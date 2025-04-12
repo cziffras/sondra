@@ -516,7 +516,7 @@ class SARContrastiveAugmentations:
         view1 = self.intensity_aug(view1)
         view1 = self.speckle_aug(view1)
         if self.use_elastic and random.random() < 0.5:
-            view1 = self.elastic_aug(view1)
+           view1 = self.elastic_aug(view1)
             
         # Second view - focus on frequency/phase domain
         view2 = img.clone()

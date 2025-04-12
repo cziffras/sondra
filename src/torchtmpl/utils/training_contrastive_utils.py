@@ -20,7 +20,7 @@ def train_one_contrastive_epoch(
     scheduler: torch.optim.lr_scheduler,
     device: torch.device,
     epoch: int,
-    max_norm=2.5,
+    max_norm: float = 2.5,
     loss_weights=None,
 ) -> dict:
     """
@@ -123,6 +123,7 @@ def valid_contrastive_epoch(
     loader: torch.utils.data.DataLoader,
     f_loss: nn.Module,
     device: torch.device,
+    loss_weights=None
 ) -> dict:
     """
     Run the training loop for nsteps minibatches of the dataloader

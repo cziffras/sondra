@@ -186,7 +186,7 @@ def train(config, wandb_run):
 
         if not contrastive:
             valid_accuracy = valid_metrics.get("valid_overall_accuracy", None)
-            accuracy_msg = f", {valid_accuracy:.3f}%, " if valid_accuracy is not None else ""
+            accuracy_msg = f", Accuracy : {valid_accuracy:.3f}% " if valid_accuracy is not None else ""
         else:
             accuracy_msg = ""
 
@@ -195,17 +195,14 @@ def train(config, wandb_run):
             epoch=e
         )
         logging.info(
-            "[%d/%d] Train loss : %.3f, Validation loss : %.3f %s%s"
-            % (
-                e,
-                config["nepochs"],
-                train_loss,
-                valid_loss,
-                accuracy_msg,
-                "[>> BETTER <<]" if updated else "",
-            )
+            "[%d/%d] Train loss: %.3f, Validation loss: %.3f %s%s",
+            e,
+            config["nepochs"],
+            train_loss,
+            valid_loss,
+            accuracy_msg,  # Remplacé accuracy_msg par accuracy
+            "[>> BETTER <<]" if updated else "",
         )
-
         # Mise à jour des dashboards
         metrics = {
             "epoch": e,
