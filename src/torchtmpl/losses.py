@@ -22,7 +22,7 @@ class NTXentLoss(nn.Module):
     
 
 class FocalLoss(nn.Module):
-    def __init__(self, alpha=None, ignore_index=0, gamma=6.0):
+    def __init__(self, alpha=None, ignore_index=0, gamma=3.0):
         super(FocalLoss, self).__init__()
         self.ignore_index = ignore_index
         self.gamma = gamma
