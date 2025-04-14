@@ -1,283 +1,300 @@
 import torch
-import torch.nn.functional as F
-from torchcvnn.datasets import PolSFDataset, ALOSDataset
-import logging
 import random
-from torchcvnn.transforms import LogAmplitude, PolSARtoTensor
-from ..transforms import SARContrastiveAugmentations
-from ..utils import ToTensor
-import torchvision.transforms.v2 as v2
+import logging
 import pathlib
+from torchcvnn.datasets import PolSFDataset, ALOSDataset
+from torchcvnn.transforms import LogAmplitude, PolSARtoTensor
+import torchvision.transforms.v2 as v2
+
+from ..utils import ToTensor
+from ..transforms import SARContrastiveAugmentations
 
 
-class PolSFContrastive(ALOSDataset):
-    def __init__(self, rootdir: str, transform_contrastive=None, **kwargs):
-        root = pathlib.Path(rootdir) / "VOL-ALOS2044980750-150324-HBQR1.1__A"
-        super().__init__(root, transform=None, **kwargs)
-        self.transform_contrastive = transform_contrastive
-
-    def __getitem__(self, index: int):
-        data = super().__getitem__(index)
-
-        if self.transform_contrastive is not None:
-            view1, view2 = self.transform_contrastive(data)
-        else:
-            view1 = data
-            view2 = data
-
-        return (view1.to(torch.complex64), view2.to(torch.complex64))
-
-
-class WrappedPolSFDataset(PolSFDataset):
-    # labels to torch tensor
-    to_tensor_labels = ToTensor(dtype=torch.int64)
-
-    def __init__(self, root, transform=None, patch_size=(128, 128), patch_stride=None):
+class EnhancedPolSFDataset(PolSFDataset):
+    """
+    PolSF Dataset but managing contrastive mode as much as configurable transforms...
+    """
+    ALOS_PATH_SUFFIX = "VOL-ALOS2044980750-150324-HBQR1.1__A"
+    
+    def __init__(
+        self, 
+        root, 
+        contrastive_mode=False,
+        transform=None,
+        transform_contrastive=None,
+        augment_transform=None,
+        patch_size=(128, 128), 
+        patch_stride=None,
+        crop_coordinates=None,
+        index_tracking=False,
+        **kwargs
+    ):
+        
+        if isinstance(root, str) and not root.endswith(self.ALOS_PATH_SUFFIX):
+            root = pathlib.Path(root) / self.ALOS_PATH_SUFFIX
+            
         super().__init__(
             root=root,
             transform=transform,
             patch_size=patch_size,
             patch_stride=patch_stride,
+            crop_coordinates=crop_coordinates,
+            **kwargs
         )
-        self._augment_transform = None
-
-    def set_augment_transform(self, transform):
-        self._augment_transform = transform
-
+        
+        self.contrastive_mode = contrastive_mode
+        self.transform_contrastive = transform_contrastive
+        self.augment_transform = augment_transform
+        self.index_tracking = index_tracking
+        self.to_tensor_labels = ToTensor(dtype=torch.int64)
+        
     def __getitem__(self, idx):
+        if self.contrastive_mode:
+            return self._get_contrastive_item(idx)
+        else:
+            return self._get_standard_item(idx)
+    
+    def _get_contrastive_item(self, idx):
+        data = super(ALOSDataset, self).__getitem__(idx)
+        
+        if self.transform_contrastive is not None:
+            view1, view2 = self.transform_contrastive(data)
+        else:
+            view1, view2 = data, data
+            
+        result = (view1.to(torch.complex64), view2.to(torch.complex64))
+        
+        # Add the index if needed
+        if self.index_tracking:
+            return (*result, idx)
+        return result
+    
+    def _get_standard_item(self, idx):
+        """Standard get_item method from polsf"""
         data, labels = super().__getitem__(idx)
+        
+        # converting labels to tensor
         labels = self.to_tensor_labels(labels)
-        if self._augment_transform is not None:
-            data = self._augment_transform(data)
-        return data, labels
+        
+        # WARNING: augment transform does NOT play the role of a contrastive one
+        if self.augment_transform is not None:
+            data = self.augment_transform(data)
+            
+        result = (data, labels)
+        
+        # Add the index if needed
+        if self.index_tracking:
+            return (*result, idx)
+        return result
 
 
-def get_polsf_contrastive_dataset(
-    rootdir,
-    patch_size=(128, 128),
-    patch_stride=None,
-    transform_contrastive=None,
-):
+class PolSFDataManager:
     """
-    Labeled pixels between corners : crop_coordinates = ((2832, 736), (7888, 3520)) (cf. torchcvnn.datasets.PolSFDataset classs)
-    Image corners : ((0, 0), (22608, 8080))
-
-    So to get the contrastive pretraining unlabled pixels, we concatenate datasets on following crop_coordinates :
-
-    (0, 0), (7888, 736) (bottom left corner)
-    (0, 736), (2832, 8080) (left side)
-    (7888, 0),(22608, 8080) (right side)
-    (2832, 3520), (7888, 8080) (remaining top side)
+    Manager that handles both datasets and dataloaders creation.
     """
 
-    crop_coordinates_list = [
-        ((0, 0), (7888, 736)),
-        ((0, 736), (2832, 8080)),
-        ((7888, 0), (22608, 8080)),
-        ((2832, 3520), (7888, 8080)),
-    ]
+    
+    def __init__(self, config, use_cuda=False, debug=False):
 
-    complete_daset = torch.utils.data.ConcatDataset(
-        [
-            PolSFContrastive(
-                rootdir=rootdir,
-                patch_size=patch_size,
-                patch_stride=patch_stride,
-                transform_contrastive=transform_contrastive,
-                crop_coordinates=crop_coordinates,
+        self.config = config
+        self.use_cuda = use_cuda
+        self.debug = debug
+        
+        self.root_dir = config["root_dir"]
+        self.batch_size = config["batch_size"]
+        self.num_workers = config["num_workers"]
+        self.valid_ratio = config["valid_ratio"]
+        self.patch_size = tuple(config.get("patch_size", (128, 128)))
+        self.patch_stride = tuple(config.get("patch_stride", self.patch_size))
+
+    
+    def get_dataloaders(self, contrastive=False):
+    
+        if contrastive:
+            dataset = self._create_contrastive_dataset()
+        else:
+            dataset = self._create_standard_dataset()
+        
+        # Debug if needed
+        if self.debug:
+            self._print_debug_info(dataset)
+        
+        logging.info(f"Loaded {len(dataset)} samples")
+        
+        train_dataset, valid_dataset = self._split_dataset(dataset)
+        
+        if not contrastive:
+            transform = self._get_transform()
+            train_dataset = EnhancedPolSFDataset(
+                root=self.root_dir,
+                contrastive_mode=False,
+                transform=v2.Compose([PolSARtoTensor()]),
+                augment_transform=v2.Compose([transform, LogAmplitude()]),
+                patch_size=self.patch_size,
+                patch_stride=self.patch_stride
             )
-            for crop_coordinates in crop_coordinates_list
-        ]
-    )
-    return complete_daset
-
-
-def get_transform(data_config):
-    transform_args = data_config.get("transform", {})
-    transform_name = transform_args.get("name", "SARContrastiveAugmentations")
-    transform_params = transform_args.get("params", {})
-
-    return eval(f"{transform_name}")(**transform_params)
-
-
-def get_polsf_dataloaders(
-    data_config,
-    use_cuda,
-    contrastive=False,
-    debug=False,
-):
-    """
-    Returns the train and validation dataloaders for the PolSF dataset,
-    as well the list of patches part of test set.
-
-    data_config : "data" section of the configuration file.
-    use_cuda: bool, set True when a graphic card is available.
-    """
-    valid_ratio = data_config["valid_ratio"]
-    batch_size = data_config["batch_size"]
-    num_workers = data_config["num_workers"]
-
-    root_dir = data_config["root_dir"]
-
-    patch_size = tuple(data_config.get("patch_size", (128, 128)))
-    patch_stride = tuple(data_config.get("patch_stride", patch_size))
-
-    if contrastive:
-        transform_contrastive_args = data_config.get("transform_contrastive", {})
-
-        transform_name = transform_contrastive_args.get(
-            "name", "SARContrastiveAugmentations"
+            
+            # Just apply LogAmplitude to valid dataset ("smoothing" technique)
+            valid_dataset = EnhancedPolSFDataset(
+                root=self.root_dir,
+                contrastive_mode=False,
+                transform=v2.Compose([PolSARtoTensor()]),
+                augment_transform=LogAmplitude(),
+                patch_size=self.patch_size,
+                patch_stride=self.patch_stride
+            )
+        
+        # Loaders are created here
+        loader_kwargs = {
+            "batch_size": self.batch_size,
+            "num_workers": self.num_workers,
+            "pin_memory": self.use_cuda,
+        }
+        
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset, shuffle=True, **loader_kwargs
         )
-        transform_params = transform_contrastive_args.get("params", {})
-
-        transform = eval(f"{transform_name}")(**transform_params)
-
-        polsf_dataset = PolSFContrastive(
-            rootdir=root_dir,
-            patch_size=patch_size,
-            patch_stride=patch_stride,
-            transform_contrastive=v2.Compose(
-                [PolSARtoTensor(), transform, LogAmplitude()]
-            ),
+        valid_loader = torch.utils.data.DataLoader(
+            valid_dataset, shuffle=False, **loader_kwargs
         )
+        
+        num_classes = 1 if contrastive else len(dataset.classes)
+        input_size = tuple(dataset[0][0].shape)
+        
+        return train_loader, valid_loader, input_size, num_classes
+    
+    
+    def get_full_image_dataloader(self):
 
-    else:
-        polsf_dataset = WrappedPolSFDataset(
-            root=root_dir,
-            patch_size=patch_size,
-            patch_stride=patch_stride,
+        dataset = EnhancedPolSFDataset(
+            root=self.root_dir,
+            contrastive_mode=False,
             transform=v2.Compose([PolSARtoTensor()]),
+            augment_transform=LogAmplitude(),
+            patch_size=self.patch_size,
+            patch_stride=self.patch_stride,
+            index_tracking=True
         )
+        
+        loader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+        )
+        
+        alos_dataset = dataset.alos_dataset if hasattr(dataset, 'alos_dataset') else dataset
+        
+        return (
+            loader,
+            alos_dataset.nsamples_per_cols,
+            alos_dataset.nsamples_per_rows,
+        )
+    
+    
+    def _create_contrastive_dataset(self):
 
-    if debug:
-        # ========== DEBUG INFO ========== #
+        # Selects unanottated regions of the total image to 
+        # leverage contrastive pretraining
+        crop_regions = [
+            ((0, 0), (7888, 736)),        # bottom left
+            ((0, 736), (2832, 8080)),     # left side
+            ((7888, 0), (22608, 8080)),   # right side
+            ((2832, 3520), (7888, 8080)), # top side
+        ]
+        
+        transform_args = self.config.get("transform_contrastive", {})
+        transform_params = transform_args.get("params", {})
+        transform = SARContrastiveAugmentations(**transform_params)
+     
+        transform_pipeline = v2.Compose([PolSARtoTensor(), transform, LogAmplitude()])
+        
+    
+        datasets = []
+        for coords in crop_regions:
+            datasets.append(
+                EnhancedPolSFDataset(
+                    root=self.root_dir,
+                    contrastive_mode=True,
+                    transform_contrastive=transform_pipeline,
+                    patch_size=self.patch_size,
+                    patch_stride=self.patch_stride,
+                    crop_coordinates=coords,
+                )
+            )
+        
+        return torch.utils.data.ConcatDataset(datasets)
+    
+    
+    def _create_standard_dataset(self):
+
+        return EnhancedPolSFDataset(
+            root=self.root_dir,
+            contrastive_mode=False,
+            transform=v2.Compose([PolSARtoTensor()]),
+            patch_size=self.patch_size,
+            patch_stride=self.patch_stride,
+        )
+    
+    
+    def _split_dataset(self, dataset):
+        """Splits a dataset in train and valid subsets"""
+        indices = list(range(len(dataset)))
+        random.shuffle(indices)
+        split = int(self.valid_ratio * len(dataset))
+        
+        return (
+            torch.utils.data.Subset(dataset, indices[split:]),
+            torch.utils.data.Subset(dataset, indices[:split]),
+        )
+    
+    def _get_transform(self):
+        """Get transform from config (see transforms directory to see what options we got)"""
+        transform_args = self.config.get("transform", {})
+        transform_name = transform_args.get("name", "SARContrastiveAugmentations")
+        transform_params = transform_args.get("params", {})
+        
+        transforms_dict = {
+            "SARContrastiveAugmentations": SARContrastiveAugmentations,
+        }
+        
+        if transform_name not in transforms_dict:
+            raise ValueError(f"Transform not found: {transform_name}")
+        
+        return transforms_dict[transform_name](**transform_params)
+    
+    def _print_debug_info(self, dataset):
         print("\n========== Dataset Debug Info ==========")
         try:
-            # Tentative d'accès au premier patch
-            first_item = polsf_dataset[0]
-            if isinstance(first_item, tuple):
-                patch = first_item[0]  # Pour segmentation : (x, y)
-            else:
-                patch = first_item  # Pour contrastif : (x1, x2)
-
-            print("Shape d’un patch extrait     :", patch.shape)
-            print("Patch size (config)         :", patch_size)
-            print("Patch stride (config)       :", patch_stride)
-            print(f"Nombre total de patches     : {len(polsf_dataset)}")
-
+            first_item = dataset[0]
+            patch = first_item[0] if isinstance(first_item, tuple) else first_item
+                
+            print(f"Patch shape: {patch.shape}")
+            print(f"Patch size: {self.patch_size}")
+            print(f"Patch stride: {self.patch_stride}")
+            print(f"Total patches: {len(dataset)}")
         except Exception as e:
-            print("Erreur pendant l'accès à un patch :", e)
-
+            print(f"Error accessing patch: {e}")
         print("========================================\n")
 
-    logging.info(f"  - I loaded {len(polsf_dataset)} samples")
 
-    # Shuffle indices to create train, val and test sets
-    indices = list(range(len(polsf_dataset)))
-    random.shuffle(indices)
-    num_valid = int(valid_ratio * len(polsf_dataset))
+if __name__ =="__main__":
 
-    valid_indices = indices[:num_valid]
-    train_indices = indices[num_valid:]
+    data_config = {
+    "root_dir": "/path/to/data",
+    "batch_size": 32,
+    "num_workers": 4,
+    "valid_ratio": 0.2,
+    "patch_size": [128, 128],
+    "transform": {
+        "name": "SARContrastiveAugmentations",
+        "params": {"p": 0.5}
+    }
+}
+    data_manager = PolSFDataManager(data_config, use_cuda=True, debug=True)
 
-    train_dataset = torch.utils.data.Subset(polsf_dataset, train_indices)
-    valid_dataset = torch.utils.data.Subset(polsf_dataset, valid_indices)
+    train_loader, val_loader, input_size, num_classes = data_manager.get_dataloaders(contrastive=False)
 
-    if not contrastive:
-        # we are using the wrapped dataset
-        transform = get_transform(data_config)
-        train_dataset.dataset.set_augment_transform(
-            v2.Compose([transform, LogAmplitude()])
-        )
-        valid_dataset.dataset.set_augment_transform(LogAmplitude())
+    train_loader_contrastive, val_loader_contrastive, input_size_c, num_classes_c = data_manager.get_dataloaders(contrastive=True)
 
-    # Build the dataloaders
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        pin_memory=use_cuda,
-    )
-
-    valid_loader = torch.utils.data.DataLoader(
-        valid_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        pin_memory=use_cuda,
-    )
-
-    num_classes = 1
-    if not contrastive:
-        num_classes = len(polsf_dataset.classes)
-    input_size = tuple(polsf_dataset[0][0].shape)
-
-    return train_loader, valid_loader, input_size, num_classes
-
-class GenericDatasetWrapper(torch.utils.data.Dataset):
-    def __init__(self, dataset):
-        """
-        A generic dataset wrapper that works with any dataset class.
-
-        Args:
-            dataset: An instance of a dataset class (e.g., CIFAR10, MNIST, etc.).
-        """
-        self.dataset = dataset
-
-    def __getitem__(self, index):
-        """
-        Fetch an item from the dataset.
-
-        Args:
-            index: Index of the item to fetch.
-
-        Returns:
-            A tuple containing (data, target, index).
-        """
-        data, target = self.dataset[index]
-        return data, target, index
-
-    def __len__(self):
-        """
-        Get the length of the dataset.
-
-        Returns:
-            Length of the dataset.
-        """
-        return len(self.dataset)
-
-
-def get_full_image_dataloader(data_config: dict) -> tuple:
-
-    batch_size = data_config["batch_size"]
-    num_workers = data_config["num_workers"]
-
-    root_dir = data_config["root_dir"]
-
-    patch_size = tuple(data_config.get("patch_size", (128, 128)))
-    patch_stride = tuple(data_config.get("patch_stride", patch_size))
-    img_size = patch_size[0]
-
-    nsamples_per_cols, nsamples_per_rows = None, None
-
-    base_dataset = WrappedPolSFDataset(
-        root=root_dir,
-        patch_size=patch_size,
-        patch_stride=patch_stride,
-        transform=v2.Compose([PolSARtoTensor(), LogAmplitude()]),
-    )
-    nsamples_per_cols = base_dataset.alos_dataset.nsamples_per_cols
-    nsamples_per_rows = base_dataset.alos_dataset.nsamples_per_rows
-
-    wrapped_dataset = GenericDatasetWrapper(base_dataset)
-
-    data_loader = torch.utils.data.DataLoader(
-        wrapped_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers
-    )
-
-    return (
-        data_loader,
-        nsamples_per_cols,
-        nsamples_per_rows,
-    )
+    full_loader, cols, rows = data_manager.get_full_image_dataloader()

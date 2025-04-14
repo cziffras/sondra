@@ -178,3 +178,4 @@ wandb/
 
 # Logs 
 logs/
+data/
