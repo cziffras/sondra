@@ -1,11 +1,10 @@
 data:
   root_dir: "/media/emmanuel/T7/data/sondra/SAN_FRANCISCO_ALOS2"
   dataset: polsf
-  batch_size: 32
-  accumulation_steps: 4
+  batch_size: 16
   num_workers: 4
-  valid_ratio: 0.2
-  patch_size: [128, 128]
+  valid_ratio: 0.1
+  patch_size: [64, 64]
   segmentation: True
 
 transform_contrastive:
