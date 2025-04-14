@@ -214,3 +214,70 @@ def get_polsf_dataloaders(
     input_size = tuple(polsf_dataset[0][0].shape)
 
     return train_loader, valid_loader, input_size, num_classes
+
+class GenericDatasetWrapper(torch.utils.data.Dataset):
+    def __init__(self, dataset):
+        """
+        A generic dataset wrapper that works with any dataset class.
+
+        Args:
+            dataset: An instance of a dataset class (e.g., CIFAR10, MNIST, etc.).
+        """
+        self.dataset = dataset
+
+    def __getitem__(self, index):
+        """
+        Fetch an item from the dataset.
+
+        Args:
+            index: Index of the item to fetch.
+
+        Returns:
+            A tuple containing (data, target, index).
+        """
+        data, target = self.dataset[index]
+        return data, target, index
+
+    def __len__(self):
+        """
+        Get the length of the dataset.
+
+        Returns:
+            Length of the dataset.
+        """
+        return len(self.dataset)
+
+
+def get_full_image_dataloader(data_config: dict) -> tuple:
+
+    batch_size = data_config["batch_size"]
+    num_workers = data_config["num_workers"]
+
+    root_dir = data_config["root_dir"]
+
+    patch_size = tuple(data_config.get("patch_size", (128, 128)))
+    patch_stride = tuple(data_config.get("patch_stride", patch_size))
+    img_size = patch_size[0]
+
+    nsamples_per_cols, nsamples_per_rows = None, None
+
+    base_dataset = WrappedPolSFDataset(
+        root=root_dir,
+        patch_size=patch_size,
+        patch_stride=patch_stride,
+        transform=v2.Compose([PolSARtoTensor(), LogAmplitude()]),
+    )
+    nsamples_per_cols = base_dataset.alos_dataset.nsamples_per_cols
+    nsamples_per_rows = base_dataset.alos_dataset.nsamples_per_rows
+
+    wrapped_dataset = GenericDatasetWrapper(base_dataset)
+
+    data_loader = torch.utils.data.DataLoader(
+        wrapped_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers
+    )
+
+    return (
+        data_loader,
+        nsamples_per_cols,
+        nsamples_per_rows,
+    )

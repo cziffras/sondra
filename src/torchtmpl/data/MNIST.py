@@ -8,6 +8,11 @@ import torch
 import torchvision
 import torchvision.transforms.v2 as v2_transforms
 
+######################### Note ##########################
+# This data is intended for trivial tasks in order to   #
+# test models on forwards pass or basic learning ability#
+#########################################################
+
 class MNISTSegmentationDataset(torch.utils.data.Dataset):
     def __init__(self, dataset):
         self.dataset = dataset
