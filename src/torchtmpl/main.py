@@ -205,9 +205,8 @@ def train(config, wandb_run):
         )
         # Mise à jour des dashboards
         metrics = {
-            "epoch": e,
             "train_loss": train_loss, 
-            "valid_loss": valid_loss
+            "valid_loss": valid_loss,
         }
 
         if not contrastive:

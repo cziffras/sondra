@@ -7,9 +7,11 @@ data:
   valid_ratio: 0.2
   patch_size: [64, 64]
 
-transform:
-  name: "SARContrastiveAugmentations"
+transform_contrastive:
   params:
+
+transform_supervised:
+  params: # TODO
 
 nepochs: 40
 
@@ -18,7 +20,6 @@ logging:
 
 model:
   class: SegmentationUNet
-  contrastive: false
   num_channels: 3          
   num_layers: 2               
   channels_ratio: 16         
@@ -29,6 +30,7 @@ model:
   upsampling_method: Upsample
   dropout: 0.1
   upsample_scale_factor: 1   
+  contrastive: false
 
 loss:
   name: FocalLoss
