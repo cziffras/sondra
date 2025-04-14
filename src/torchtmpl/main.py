@@ -134,8 +134,6 @@ def train(config, wandb_run):
         else training_utils.valid_epoch
     )
 
-    accumulation_steps = config["data"].get("accumulation_steps", 1) # Unused right now 
-
     for e in range(config["nepochs"]):
         # Entraînement pour une époque
 

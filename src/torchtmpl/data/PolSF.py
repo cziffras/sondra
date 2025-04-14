@@ -359,7 +359,9 @@ if __name__ =="__main__":
         print("\n== Batch in supervised mode ==")
         if isinstance(std_batch, (list, tuple)):
             data_std = std_batch[0]
-            print(f"Shape : {data_std.shape}")
+            target_std = std_batch[1]
+            print(f"Shape of input : {data_std.shape}, dtype : {data_std.dtype}")
+            print(f"Shape of target : {target_std.shape}, dtype : {target_std.dtype}")
         else:
             print(f"Type : {type(std_batch)}")
     except Exception as e:
