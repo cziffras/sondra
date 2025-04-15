@@ -243,8 +243,8 @@ def train(config, wandb_run):
             ylabel="Ground Truth",
         )
 
+        test_metrics["Model num params"] = num_params
         wandb_run.log(test_metrics)
-        wandb_run.log(num_params)
 
         logging.info("###################### End of training ######################")
 

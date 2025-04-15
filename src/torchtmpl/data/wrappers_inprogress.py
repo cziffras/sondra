@@ -1,4 +1,4 @@
-from .PolSF import PolSFDataManager
+from .PolSF_inprogress import PolSFDataManager
 
 def get_polsf_dataloaders(data_config, use_cuda, contrastive=False):
     """

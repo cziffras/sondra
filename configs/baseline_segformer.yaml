@@ -1,11 +1,10 @@
 data:
   root_dir: "/media/emmanuel/T7/data/sondra/SAN_FRANCISCO_ALOS2"
   dataset: polsf
-  batch_size: 32
+  batch_size: 16
   num_workers: 4
   valid_ratio: 0.2
-  patch_size: [32, 32]
-  segmentation: True
+  patch_size: [64, 64]
 
 transform_contrastive:
   params:
@@ -13,7 +12,7 @@ transform_contrastive:
 transform_supervised:
   params: # TODO
 
-nepochs: 2
+nepochs: 20
 
 logging:
   logdir: "./logs"
@@ -21,9 +20,9 @@ logging:
 model:
   class: SegmentationSegformer
   num_channels: 3
-  widths: [4, 8, 16, 32]
-  depths: [2, 2, 2, 2]
-  all_num_heads: [1, 1, 1, 1]
+  widths: [8, 16, 32, 64]
+  depths: [1, 4, 6, 2]
+  all_num_heads: [2, 4, 8, 2]
   patch_sizes: [7, 3, 3, 3]
   overlap_sizes: [4, 2, 2, 2]
   reduction_ratios: [8, 4, 2, 1]

@@ -1,6 +1,6 @@
 import sys
 import inspect
-from .wrappers import get_polsf_dataloaders
+from .wrappers_inprogress import get_polsf_dataloaders # Switch import here to use rather olf or newer version
 from .MNIST import get_mnist_dataloaders
 
 non_seg_datadict = {"polsf"}
