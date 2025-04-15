@@ -24,6 +24,7 @@ from .utils import (
     training_utils, 
     log_confusion_matrix,
     check_model_params_validity,
+    count_parameters,
 )
 
 
@@ -55,6 +56,7 @@ def train(config, wandb_run):
     logging.info("= Model")
     model_config = config["model"]
     model = models.build_model(model_config, input_size, num_classes)
+    num_params = count_parameters(model)
     model.to(device)
 
     # Build the loss
@@ -163,7 +165,6 @@ def train(config, wandb_run):
 
         train_loss = train_metrics["train_loss"]
 
-        # Évaluation sur le set de validation
         if contrastive: 
             valid_metrics =  valid_func(
                 model=model,
@@ -243,6 +244,7 @@ def train(config, wandb_run):
         )
 
         wandb_run.log(test_metrics)
+        wandb_run.log(num_params)
 
         logging.info("###################### End of training ######################")
 

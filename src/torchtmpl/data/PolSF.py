@@ -100,14 +100,15 @@ class EnhancedPolSFDataset(ALOSDataset):
         patch = super().__getitem__(idx)
         
         row_stride, col_stride = self.patch_stride 
-        
         nsamples_per_cols = self.nsamples_per_cols
         
         start_row = (idx // nsamples_per_cols) * row_stride
         start_col = (idx % nsamples_per_cols) * col_stride
         
         num_rows, num_cols = self.patch_size
-        labels = self.labels[start_row: start_row + num_rows, start_col: start_col + num_cols]
+        labels = self.labels[
+            start_row: (start_row + num_rows), start_col: (start_col + num_cols)
+        ]
 
         # WARNING : augmentation transform is NOT a contrastive transform
         if self.augment_transform is not None:
@@ -308,6 +309,7 @@ class PolSFDataManager:
 if __name__ =="__main__":
     import sys
     import yaml
+    from collections import defaultdict
 
     logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
 
@@ -362,6 +364,43 @@ if __name__ =="__main__":
             target_std = std_batch[1]
             print(f"Shape of input : {data_std.shape}, dtype : {data_std.dtype}")
             print(f"Shape of target : {target_std.shape}, dtype : {target_std.dtype}")
+
+            loader = train_loader
+
+            total_targets = 0
+            total_uniform = 0
+            for batch in loader:
+                data, targets = batch
+                
+                for target in targets:
+                    total_targets += 1
+                    if torch.all(target == target[0, 0]).item():
+                        total_uniform += 1
+
+            print("== Evaluating uniformity in targets ==")
+            print(f"{total_targets/total_uniform:.2f}% of targets are uniform")
+
+            classes_count = defaultdict(int)
+
+            max_class = 7 
+            bins_total = None
+
+            for batch in loader:
+                _, targets = batch
+                flattened_targets = targets.view(-1)
+                bins = torch.bincount(flattened_targets, minlength=max_class)
+                if bins_total is None:
+                    bins_total = bins.clone()
+                else:
+                    bins_total += bins
+
+            total_occurrences = torch.sum(bins_total).item()
+
+            print("== Evaluation classes repartition in targets ==")
+            for i, count in enumerate(bins_total.tolist()):
+                percentage = count / total_occurrences * 100
+                print(f"Classe {i} : {percentage:.2f}%")
+
         else:
             print(f"Type : {type(std_batch)}")
     except Exception as e:

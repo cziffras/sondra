@@ -30,4 +30,5 @@ def check_model_params_validity(config, use_cuda, contrastive):
     print("############## Config is correct ##############")
 
 
-    
+def count_parameters(model): 
+    return sum(p.numel() for p in model.parameters() if p.requires_grad) 
