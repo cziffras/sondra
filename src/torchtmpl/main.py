@@ -25,10 +25,11 @@ from .utils import (
     log_confusion_matrix,
     check_model_params_validity,
     count_parameters,
+    log_predictions_on_wandb,
 )
 
 
-def train(config, wandb_run):
+def train(config, wandb_run, visualize):
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda") if use_cuda else torch.device("cpu")
 
@@ -58,6 +59,8 @@ def train(config, wandb_run):
     model = models.build_model(model_config, input_size, num_classes)
     num_params = count_parameters(model)
     model.to(device)
+
+    logging.info(f"= Model has {num_params} parameters")
 
     # Build the loss
     logging.info("= Loss")
@@ -140,7 +143,7 @@ def train(config, wandb_run):
         # Entraînement pour une époque
 
         if contrastive: 
-            train_metrics =  train_epoch_func(
+            train_metrics = train_epoch_func(
                 model=model,
                 loader=train_loader,
                 f_loss=loss,
@@ -243,8 +246,20 @@ def train(config, wandb_run):
             ylabel="Ground Truth",
         )
 
-        test_metrics["Model num params"] = num_params
-        wandb_run.log(test_metrics)
+        if visualize:
+            log_predictions_on_wandb(
+                model,
+                num_classes,
+                device,
+                data_config,
+                logdir,
+                ignore_index=0,
+                training_metrics=metrics,
+                use_cuda=use_cuda
+            )
+        else:
+            wandb.log(metrics)
+
 
         logging.info("###################### End of training ######################")
 
@@ -256,12 +271,13 @@ def main():
     
     logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
 
-    if len(sys.argv) != 3:
+    if len(sys.argv) != 4:
         logging.error(f"Usage: {sys.argv[0]} config.yaml <train|test>")
         sys.exit(-1)
 
     config_file = sys.argv[1]
     command = sys.argv[2]
+    visualize = sys.argv[3]
 
     logging.info(f"Loading config from {config_file}")
     try:
@@ -288,7 +304,10 @@ def main():
     )
 
     if command == "train":
-        train(config, wandb_run=wandb_run)
+        if visualize == "visualize":
+            train(config, wandb_run=wandb_run, visualize=True)
+        else:
+            train(config, wandb_run=wandb_run, visualize=False)
     elif command == "test":
         test(config, wandb_run=wandb_run)
     else:

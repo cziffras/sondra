@@ -22,7 +22,13 @@ class NTXentLoss(nn.Module):
     
 
 class FocalLoss(nn.Module):
-    def __init__(self, alpha=None, ignore_index=0, gamma=2.0):
+    def __init__(
+            self, 
+            alpha=torch.tensor([2.38, 40.0, 3.03, 27.77, 10.27, 15.24, 55.0]), # torch.tensor([1.0, 1.46, 0.11, 1.19, 0.40, 0.54, 2.29] 
+            ignore_index=0, 
+            gamma=1.2
+        ):
+
         super(FocalLoss, self).__init__()
         self.ignore_index = ignore_index
         self.gamma = gamma

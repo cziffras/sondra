@@ -18,9 +18,6 @@ from .metrics_utils import (
 import logging
 
 
-from ..data.PolSF import get_full_image_dataloader
-
-
 def plot_segmentation_images(
     to_be_vizualized: list,
     confusion_matrix: np.ndarray,
@@ -352,10 +349,14 @@ def log_predictions_on_wandb(
     logdir,
     ignore_index=0,
     training_metrics=None,
+    use_cuda=False,
 ) -> None:
     """
     Test the model based on the given configuration.
     """
+
+    from ..data.PolSF import get_full_image_dataloader
+
     logging.info("Computing model predictions on the dataset...")
     img_size = data_config.get("patch_size", (128, 128))[0]
 
@@ -365,7 +366,7 @@ def log_predictions_on_wandb(
         data_loader,
         nsamples_per_cols,
         nsamples_per_rows,
-    ) = get_full_image_dataloader(data_config)
+    ) = get_full_image_dataloader(data_config) # , use_cuda=use_cuda
 
     (
         reconstructed_tensors,

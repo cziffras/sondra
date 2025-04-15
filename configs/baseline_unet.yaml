@@ -1,7 +1,7 @@
 data:
   root_dir: "/media/emmanuel/T7/data/sondra/SAN_FRANCISCO_ALOS2" #"/mounts/Datasets1/Polarimetric-SanFrancisco/SAN_FRANCISCO_ALOS2/"
   dataset: polsf
-  batch_size: 8
+  batch_size: 16
   accumulation_steps: 4
   num_workers: 4
   valid_ratio: 0.2
@@ -13,7 +13,7 @@ transform_contrastive:
 transform_supervised:
   params: # TODO
 
-nepochs: 40
+nepochs: 12
 
 logging:
   logdir: "./logs"  

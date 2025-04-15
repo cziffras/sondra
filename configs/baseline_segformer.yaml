@@ -12,7 +12,7 @@ transform_contrastive:
 transform_supervised:
   params: # TODO
 
-nepochs: 20
+nepochs: 12
 
 logging:
   logdir: "./logs"
@@ -21,13 +21,13 @@ model:
   class: SegmentationSegformer
   num_channels: 3
   widths: [8, 16, 32, 64]
-  depths: [1, 4, 6, 2]
-  all_num_heads: [2, 4, 8, 2]
+  depths: [2, 2, 2, 2]
+  all_num_heads: [2, 2, 4, 4]
   patch_sizes: [7, 3, 3, 3]
   overlap_sizes: [4, 2, 2, 2]
   reduction_ratios: [8, 4, 2, 1]
   mlp_expansions: [4, 4, 4, 4]
-  decoder_channels: 32
+  decoder_channels: 64
   scale_factors: [8, 4, 2, 1]
   drop_prob: 0.1
   upsample_scale_factor: 4
@@ -44,7 +44,7 @@ optimizer:
     weight_decay: 0.0005
 
 scheduler:
-  name: null #CosineAnnealingLR
+  name: CosineAnnealingLR # null 
   params:
     step_size: 5
     gamma: 0.9
