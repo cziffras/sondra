@@ -1,0 +1,61 @@
+data:
+  root_dir: "/media/emmanuel/T7/data/sondra/SAN_FRANCISCO_ALOS2" #"/mounts/Datasets1/Polarimetric-SanFrancisco/SAN_FRANCISCO_ALOS2/"
+  dataset: polsf
+  batch_size: 16
+  accumulation_steps: 4
+  num_workers: 4
+  valid_ratio: 0.2
+  patch_size: [64, 64]
+
+transform_contrastive:
+  params:
+
+transform_supervised:
+  params: # TODO
+
+nepochs: 12
+
+logging:
+  logdir: "./logs/contrastive"  
+
+model:
+  class: SegmentationUNet
+  num_channels: 3          
+  num_layers: 2               
+  channels_ratio: 16         
+  activation: modReLU          
+  normalization_method: BatchNorm
+  track_running_stats: true
+  downsampling_method: StridedConv
+  upsampling_method: Upsample
+  dropout: 0.1
+  upsample_scale_factor: 1   
+  contrastive: True
+
+loss:
+  name: NTXentLoss
+
+optimizer:
+  name: AdamW
+  params:
+    lr: 0.05
+    weight_decay: 0.0005
+
+scheduler:
+  name: null #CosineAnnealingLR
+  params:
+    step_size: 5
+    gamma: 0.9
+    last_epoch: -1
+    eta_min: 0
+    max_epoch: -1
+    max_lr: 0.05
+    pct_start: 0.1
+    anneal_strategy: "linear"
+    cycle_momentum: True
+    base_momentum: 0.8
+    max_momentum: 0.9
+    div_factor: 1
+
+verbose: false
+

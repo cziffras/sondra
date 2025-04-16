@@ -1,0 +1,62 @@
+data:
+  root_dir: "/media/emmanuel/T7/data/sondra/SAN_FRANCISCO_ALOS2"
+  dataset: polsf
+  batch_size: 16
+  num_workers: 4
+  valid_ratio: 0.2
+  patch_size: [64, 64]
+
+transform_contrastive:
+  params:
+
+transform_supervised:
+  params: # TODO
+
+nepochs: 12
+
+logging:
+  logdir: "./logs/contrastive"
+
+model:
+  class: SegmentationSegformer
+  num_channels: 3
+  widths: [8, 16, 32, 64]
+  depths: [2, 2, 2, 2]
+  all_num_heads: [2, 2, 4, 4]
+  patch_sizes: [7, 3, 3, 3]
+  overlap_sizes: [4, 2, 2, 2]
+  reduction_ratios: [8, 4, 2, 1]
+  mlp_expansions: [4, 4, 4, 4]
+  decoder_channels: 64
+  scale_factors: [8, 4, 2, 1]
+  drop_prob: 0.1
+  upsample_scale_factor: 4
+  contrastive: True
+  loss_weights: null # In contrastive mode only
+
+loss:
+  name: NTXentLoss # FocalLoss
+
+optimizer:
+  name: AdamW
+  params:
+    lr: 0.005
+    weight_decay: 0.0005
+
+scheduler:
+  name: CosineAnnealingLR # null 
+  params:
+    step_size: 5
+    gamma: 0.9
+    last_epoch: -1
+    eta_min: 0
+    max_epoch: -1
+    max_lr: 0.05
+    pct_start: 0.1
+    anneal_strategy: "linear"
+    cycle_momentum: True
+    base_momentum: 0.8
+    max_momentum: 0.9
+    div_factor: 1
+
+verbose: false
