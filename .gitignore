@@ -184,3 +184,5 @@ logs/
 /data/
 
 
+/logslurms/
+/job.sbatch

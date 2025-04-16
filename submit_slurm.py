@@ -42,12 +42,14 @@ echo "Setting up the virtual environment"
 python3 -m venv venv
 source venv/bin/activate
 
+export WANDB_API_KEY="58de5b94da8d662be3569ed9671373d4e582ab2c" # added wandb access token 
+
 # Install the project dependencies
-python -m pip install --upgrade pip setuptools && python -m pip install lib/
+python -m pip install --upgrade pip setuptools && python -m pip install -r piprequirements.txt
 
 
 echo "Training"
-python -m sondra.main {configpath} train
+python -m src.torchtmpl.main {configpath} train visualize
 
 echo "Saving logs/checkpoints from $TMPDIR back to $current_dir"
 rsync -r $TMPDIR/code/logs/ $current_dir/logs/ 2>/dev/null || true
