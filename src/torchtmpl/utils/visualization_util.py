@@ -355,7 +355,7 @@ def log_predictions_on_wandb(
     Test the model based on the given configuration.
     """
 
-    from ..data.wrappers_inprogress import get_full_image_dataloader
+    from ..data.wrappers import get_full_image_dataloader
 
     logging.info("Computing model predictions on the dataset...")
     img_size = data_config.get("patch_size", (128, 128))[0]
