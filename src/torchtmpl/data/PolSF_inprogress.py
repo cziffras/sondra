@@ -239,7 +239,7 @@ class PolSFDataManager:
         return EnhancedPolSFDataset(
             root=self.root_dir,
             contrastive_mode=False,
-            transform=v2.Compose([PolSARtoTensor()]),
+            transform=v2.Compose([PolSARtoTensor(), LogAmplitude()]),
             patch_size=self.patch_size,
             patch_stride=self.patch_stride,
         )
