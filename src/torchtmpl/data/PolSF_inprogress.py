@@ -118,7 +118,7 @@ class EnhancedPolSFDataset(ALOSDataset):
         
         if self.index_tracking:
             return patch, labels, idx
-        return patch, labels
+        return patch.to(torch.complex64), labels
 
 
 class PolSFDataManager:

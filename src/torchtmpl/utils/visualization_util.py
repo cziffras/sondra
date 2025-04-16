@@ -355,7 +355,7 @@ def log_predictions_on_wandb(
     Test the model based on the given configuration.
     """
 
-    from ..data.PolSF import get_full_image_dataloader
+    from ..data.wrappers_inprogress import get_full_image_dataloader
 
     logging.info("Computing model predictions on the dataset...")
     img_size = data_config.get("patch_size", (128, 128))[0]
@@ -366,7 +366,7 @@ def log_predictions_on_wandb(
         data_loader,
         nsamples_per_cols,
         nsamples_per_rows,
-    ) = get_full_image_dataloader(data_config) # , use_cuda=use_cuda
+    ) = get_full_image_dataloader(data_config, use_cuda=use_cuda) # 
 
     (
         reconstructed_tensors,
