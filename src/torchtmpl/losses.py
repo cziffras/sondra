@@ -25,8 +25,8 @@ class NTXentLoss(nn.Module):
         norm = torch.linalg.norm(z, dim=1, keepdim=True).clamp_min(self.eps)
         z_normalized = z / norm  # shape (2N, D)
 
-        # similarity with real part of hermitian product 
-        sim = torch.matmul(z_normalized, z_normalized.conj().T).real  # (2N, 2N)
+        # similarity with module of hermitian products
+        sim = torch.abs(torch.matmul(z_normalized, z_normalized.conj().T))  # (2N, 2N)
         # clamp to avoid overflow
         sim = sim.clamp(-1 + self.eps, 1 - self.eps)
 
