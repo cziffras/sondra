@@ -67,6 +67,9 @@ def train_one_contrastive_epoch(
 
         # update
         optim.step()
+ 
+        with torch.no_grad():
+            model.loss_weights.data.clamp_(-10, 10)
 
         # step scheduler
         if isinstance(scheduler, (torch.optim.lr_scheduler.CyclicLR,

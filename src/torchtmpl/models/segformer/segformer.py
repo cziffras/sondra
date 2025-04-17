@@ -53,6 +53,7 @@ class SegFormer(nn.Module):
                 for c in widths
             ])
             # learnable weights to merge losses (instead of setting them myself in config)
+            # but from this stems a risk of collapsing, see discussion on KL div
             self.loss_weights = nn.Parameter(
                 torch.ones(len(widths), dtype=torch.complex64)
             )
@@ -72,7 +73,9 @@ class SegFormer(nn.Module):
                 # L2 norm : 
                 # helps to prevent the length of embeddings to influence
                 # the computation of NTXent loss 
-                z = F.normalize(z, dim=1) 
+                norm = z.norm(p=2, dim=1, keepdim=True).clamp_min(1e-6)  
+                z = z / norm
+                
                 emb_list.append(z)
             return emb_list  # embeddings lis of shape (b, proj_dim)
 
