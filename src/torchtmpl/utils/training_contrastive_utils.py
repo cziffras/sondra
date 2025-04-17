@@ -30,7 +30,6 @@ def train_one_contrastive_epoch(
     gradient_norm_sum = 0.0
     num_samples = 0
     num_batches = 0
-    N = len(model.loss_weights) 
 
     for x1, x2 in tqdm.tqdm(loader, desc=f"Train Epoch {epoch}"):
         x1, x2 = x1.to(device), x2.to(device)
@@ -103,7 +102,7 @@ def valid_contrastive_epoch(
     Arguments:
         model: the SegFormer model with contrastive=True
         loader: DataLoader returning pairs (x1, x2)
-        criterion: NT-Xent loss module
+        f_loss: NT-Xent loss module
         device: torch device
 
     Returns:
@@ -113,7 +112,6 @@ def valid_contrastive_epoch(
     total_loss = 0.0
     num_samples = 0
 
-    # mind not accumulating the gradients
     with torch.no_grad():
         for x1, x2 in tqdm.tqdm(loader, desc="Valid"):
             x1, x2 = x1.to(device), x2.to(device)
@@ -127,11 +125,9 @@ def valid_contrastive_epoch(
                 for z1, z2 in zip(zs1, zs2)
             ], dim=0)  # shape = (num_stages,)
 
-            # Learnable fusion of losses
-            with torch.no_grad():  # ... except here they are fixed
-                weights = F.softmax(torch.real(model.loss_weights), dim=0)
-
-            loss = (weights * losses).sum()
+            # Pondération par incertitude homoscédastique (Kendall & Gal, 2018)
+            precision = torch.exp(-model.log_vars)          # 1/σ_i²
+            loss = (precision * losses).sum() + model.log_vars.sum()
 
             batch_size = x1.size(0)
             total_loss += loss.item() * batch_size
