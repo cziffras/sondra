@@ -3,11 +3,11 @@ import torch.nn as nn
 from torch import Tensor
 import torch.nn.functional as F
 from typing import List, Tuple, Dict
-from torchcvnn.nn.modules import Upsample, modReLU, BatchNorm2d
+from torchcvnn.nn.modules import Upsample, modReLU
 
 from .decoder_segformer import SegFormerDecoder
 from .encoder_segformer import SegFormerEncoder
-from .layers_segformer import SegFormerSegmentationHead
+from .layers_segformer import SegFormerSegmentationHead, LayerNorm2d
 
 class SegFormer(nn.Module):
     def __init__(
@@ -47,7 +47,7 @@ class SegFormer(nn.Module):
             self.proj_heads = nn.ModuleList([
                 nn.Sequential(
                     nn.Conv2d(c, proj_dim, kernel_size=1, bias=False, dtype=self.dtype),
-                    BatchNorm2d(proj_dim), # stabilize contrastive learning
+                    LayerNorm2d(proj_dim), # stabilize contrastive learning
                     modReLU(),
                 )
                 for c in widths
