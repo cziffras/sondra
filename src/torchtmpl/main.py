@@ -151,7 +151,7 @@ def train(config, wandb_run, visualize):
                 scheduler=scheduler,
                 device=device,
                 epoch=e,
-                lambda_kl=config["model"].get("lambda_l2", 0.1)
+                lambda_l2=config["model"].get("lambda_l2", 0.1)
             )
         
         else: 
