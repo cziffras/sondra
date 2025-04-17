@@ -218,6 +218,10 @@ def train(config, wandb_run, visualize):
 
         for key, value in metrics.items():
             tensorboard_writer.add_scalar(key, value, e)
+        
+        if config["model"].get("scheduler", None) == "CosineAnnealingLR":
+            scheduler.step()
+
     
     if contrastive :
 
