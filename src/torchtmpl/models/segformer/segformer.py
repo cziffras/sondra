@@ -69,8 +69,10 @@ class SegFormer(nn.Module):
                 z = head(feat)
                 # GAP spatial → (b, proj_dim)
                 z = F.adaptive_avg_pool2d(z, 1).view(z.size(0), -1)
-                # L2 norm
-                z = F.normalize(z, dim=1)
+                # L2 norm : 
+                # helps to prevent the length of embeddings to influence
+                # the computation of NTXent loss 
+                z = F.normalize(z, dim=1) 
                 emb_list.append(z)
             return emb_list  # embeddings lis of shape (b, proj_dim)
 
