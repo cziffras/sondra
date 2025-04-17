@@ -32,6 +32,7 @@ model:
   drop_prob: 0.1
   upsample_scale_factor: 4
   contrastive: True
+  lambda_l2: 1
 
 loss:
   name: NTXentLoss # FocalLoss

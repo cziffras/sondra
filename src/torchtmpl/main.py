@@ -151,7 +151,7 @@ def train(config, wandb_run, visualize):
                 scheduler=scheduler,
                 device=device,
                 epoch=e,
-                lambda_kl=config["model"].get("lambda_kl", 0.1)
+                lambda_kl=config["model"].get("lambda_l2", 0.1)
             )
         
         else: 
@@ -174,6 +174,7 @@ def train(config, wandb_run, visualize):
                 loader=valid_loader,
                 f_loss=loss,
                 device=device,
+                lambda_l2=config["model"].get("lambda_l2", 0.1)
             )
         else: 
             valid_metrics =  valid_func(

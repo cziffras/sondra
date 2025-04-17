@@ -21,7 +21,7 @@ def train_one_contrastive_epoch(
     scheduler,
     device: torch.device,
     max_norm: float = 2.5,
-    lambda_kl: float = 0.1,
+    lambda_l2: float = 1,
     epoch: int = 0,
 ) -> dict:
     model.train()
@@ -42,9 +42,12 @@ def train_one_contrastive_epoch(
         # Learnable fusion of losses (again, instead of defining weights in config)
         precision = torch.exp(-model.log_vars)   # 1/σ_i²
         contrastive_loss = torch.sum(precision * losses)
+
+        # penalty (avoid negative weights)
+        l2_penalty = lambda_l2 * torch.sum(model.log_vars ** 2)
         
-        # régularisation log σ_i (cf. Kendall & Gal, CVPR 2018)
-        loss = contrastive_loss + torch.sum(model.log_vars)
+        # regularization log σ_i (cf. Kendall & Gal, CVPR 2018)
+        loss = contrastive_loss + torch.sum(model.log_vars) + l2_penalty
 
         # backward + clipping
         optim.zero_grad()
@@ -95,6 +98,7 @@ def valid_contrastive_epoch(
     loader: torch.utils.data.DataLoader,
     f_loss: nn.Module,
     device: torch.device,
+    lambda_l2: float = 1,
 ) -> dict:
     """
     Run one validation epoch for contrastive learning.
@@ -125,9 +129,12 @@ def valid_contrastive_epoch(
                 for z1, z2 in zip(zs1, zs2)
             ], dim=0)  # shape = (num_stages,)
 
-            # Pondération par incertitude homoscédastique (Kendall & Gal, 2018)
-            precision = torch.exp(-model.log_vars)          # 1/σ_i²
-            loss = (precision * losses).sum() + model.log_vars.sum()
+            # uncertainty weighing (Kendall & Gal, 2018)
+            precision = torch.exp(-model.log_vars)          # 1/σ_i² 
+
+            l2_penalty = lambda_l2 * torch.sum(model.log_vars ** 2)
+
+            loss = (precision * losses).sum() + model.log_vars.sum() + l2_penalty
 
             batch_size = x1.size(0)
             total_loss += loss.item() * batch_size
