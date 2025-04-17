@@ -150,8 +150,7 @@ def train(config, wandb_run, visualize):
                 optim=optimizer,
                 scheduler=scheduler,
                 device=device,
-                epoch=e,
-                loss_weights=config["model"].get("loss_weights", None)
+                epoch=e
             )
         
         else: 

@@ -16,7 +16,7 @@ transform_supervised:
 nepochs: 12
 
 logging:
-  logdir: "./logs"  
+  logdir: "./logs/supervised"  
 
 model:
   class: SegmentationUNet

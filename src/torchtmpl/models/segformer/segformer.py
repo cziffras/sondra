@@ -1,8 +1,9 @@
 import torch
 import torch.nn as nn
 from torch import Tensor
+import torch.nn.functional as F
 from typing import List, Tuple, Dict
-from torchcvnn.nn.modules import Upsample 
+from torchcvnn.nn.modules import Upsample, modReLU, BatchNorm2d
 
 from .decoder_segformer import SegFormerDecoder
 from .encoder_segformer import SegFormerEncoder
@@ -23,41 +24,61 @@ class SegFormer(nn.Module):
         scale_factors: List[int],
         num_classes: int,
         drop_prob: float = 0.0,
-        contrastive: bool = False
+        contrastive: bool = False,
+        proj_dim: int = 128,              # contrastive embeddings dim
+        dtype: torch.dtype = torch.complex64
     ):
         super().__init__()
         self.contrastive = contrastive 
+        self.dtype = dtype
+
         self.encoder = SegFormerEncoder(
-            in_channels,
-            widths,
-            depths,
-            all_num_heads,
-            patch_sizes,
-            overlap_sizes,
-            reduction_ratios,
-            mlp_expansions,
-            drop_prob,
+            in_channels, widths, depths, all_num_heads,
+            patch_sizes, overlap_sizes, reduction_ratios,
+            mlp_expansions, drop_prob,
         )
         self.decoder = SegFormerDecoder(decoder_channels, widths[::-1], scale_factors)
         self.head = SegFormerSegmentationHead(
             decoder_channels, num_classes, num_features=len(widths)
         )
 
-    def forward(self, x: Tensor) -> Tensor:
-        features = self.encoder(x)
+        if self.contrastive:
+            # 1×1 conv → BN → ReLU
+            self.proj_heads = nn.ModuleList([
+                nn.Sequential(
+                    nn.Conv2d(c, proj_dim, kernel_size=1, bias=False, dtype=self.dtype),
+                    BatchNorm2d(proj_dim), # stabilize contrastive learning
+                    modReLU(),
+                )
+                for c in widths
+            ])
+            # learnable weights to merge losses (instead of setting them myself in config)
+            self.loss_weights = nn.Parameter(
+                torch.ones(len(widths), dtype=torch.complex64)
+            )
 
-        if self.contrastive: 
-            embeddings = []
-            for feature in features:
-                # (b, c, h, w) -> (b, 1, h, w)
-                feature_avg = feature.mean(dim=1, keepdim=True)
-                embedding = feature_avg.view(feature_avg.size(0), -1) # (b, h*w)
-                embeddings.append(embedding)
-            return embeddings # list of length num_stages of embeddings of size (b, h_i * w_i)
-        
-        features = self.decoder(features[::-1])
-        segmentation = self.head(features)
-        return segmentation
+    def forward(self, x: Tensor):
+
+        x = x.to(self.dtype)
+        feats = self.encoder(x)
+
+        if self.contrastive:
+            emb_list = []
+            for feat, head in zip(feats, self.proj_heads):
+                # (b, c, h, w) → (b, proj_dim, h, w)
+                z = head(feat)
+                # GAP spatial → (b, proj_dim)
+                z = F.adaptive_avg_pool2d(z, 1).view(z.size(0), -1)
+                # L2 norm
+                z = F.normalize(z, dim=1)
+                emb_list.append(z)
+            return emb_list  # embeddings lis of shape (b, proj_dim)
+
+        # standard seg task
+        x_dec = self.decoder(feats[::-1])
+        seg = self.head(x_dec)
+
+        return seg
 
 
 ################### Segmentation Segformer Wrapper #############################
