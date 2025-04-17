@@ -21,6 +21,7 @@ def train_one_contrastive_epoch(
     scheduler,
     device: torch.device,
     max_norm: float = 2.5,
+    lambda_kl: float = 0.1,
     epoch: int = 0,
 ) -> dict:
     model.train()
@@ -29,6 +30,7 @@ def train_one_contrastive_epoch(
     gradient_norm_sum = 0.0
     num_samples = 0
     num_batches = 0
+    N = len(model.loss_weights) 
 
     for x1, x2 in tqdm.tqdm(loader, desc=f"Train Epoch {epoch}"):
         x1, x2 = x1.to(device), x2.to(device)
@@ -39,8 +41,17 @@ def train_one_contrastive_epoch(
         losses = torch.stack([f_loss(z1, z2) for z1, z2 in zip(zs1, zs2)], dim=0)
 
         # Learnable fusion of losses (again, instead of defining weights in config)
-        weights = F.softmax(torch.real(model.loss_weights), dim=0)
-        loss = (weights * losses).sum()
+
+        u = torch.real(model.loss_weights)
+        w = F.softmax(u, dim=0)     # w_i >= 0, sum = 1
+        contrastive_loss = (w * losses).sum()
+
+        # KL-divergence vers l’uniforme u = 1/N
+        # formula  = KL(w || uniform) = sum_i w_i * log(w_i * N)
+        kl = torch.sum(w * torch.log(w * N + 1e-12))
+
+        # final loss
+        loss = contrastive_loss + lambda_kl * kl
 
         # backward + clipping
         optim.zero_grad()
@@ -62,7 +73,7 @@ def train_one_contrastive_epoch(
                                   torch.optim.lr_scheduler.OneCycleLR,
                                   torch.optim.lr_scheduler.CosineAnnealingLR)):
             scheduler.step()
-            
+
         elif isinstance(scheduler, torch.optim.lr_scheduler.CosineAnnealingWarmRestarts):
         
             scheduler.step(epoch + num_batches / len(loader))
