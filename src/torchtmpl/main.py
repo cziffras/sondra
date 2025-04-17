@@ -219,6 +219,12 @@ def train(config, wandb_run, visualize):
 
         for key, value in metrics.items():
             tensorboard_writer.add_scalar(key, value, e)
+
+        if contrastive:
+            log_vars = model.log_vars.detach().cpu()
+
+            log_vars_dict = {f"log_vars/stage_{idx}": lv.item() for idx, lv in enumerate(log_vars)}
+            wandb_run.log(log_vars_dict, step=e)
         
         if config["model"].get("scheduler", None) == "CosineAnnealingLR":
             scheduler.step()
