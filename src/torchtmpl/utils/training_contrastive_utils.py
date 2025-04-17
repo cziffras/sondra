@@ -80,7 +80,7 @@ def train_one_contrastive_epoch(
         # step scheduler
         if isinstance(scheduler, (torch.optim.lr_scheduler.CyclicLR,
                                   torch.optim.lr_scheduler.OneCycleLR,
-                                  torch.optim.lr_scheduler.CosineAnnealingLR)):
+                                )):
             scheduler.step()
 
         elif isinstance(scheduler, torch.optim.lr_scheduler.CosineAnnealingWarmRestarts):
