@@ -54,9 +54,7 @@ class SegFormer(nn.Module):
             ])
             # learnable weights to merge losses (instead of setting them myself in config)
             # but from this stems a risk of collapsing, see discussion on KL div
-            self.loss_weights = nn.Parameter(
-                torch.ones(len(widths), dtype=torch.complex64)
-            )
+            self.log_vars = nn.Parameter(torch.zeros(len(widths)))
 
     def forward(self, x: Tensor):
 

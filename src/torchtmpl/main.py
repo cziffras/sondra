@@ -151,7 +151,7 @@ def train(config, wandb_run, visualize):
                 scheduler=scheduler,
                 device=device,
                 epoch=e,
-                lambda_kl=config["model"].get("lambda_kl", 0.1)
+                lambda_l2=config["model"].get("lambda_l2", 0.1)
             )
         
         else: 
@@ -174,6 +174,7 @@ def train(config, wandb_run, visualize):
                 loader=valid_loader,
                 f_loss=loss,
                 device=device,
+                lambda_l2=config["model"].get("lambda_l2", 0.1)
             )
         else: 
             valid_metrics =  valid_func(
@@ -218,6 +219,16 @@ def train(config, wandb_run, visualize):
 
         for key, value in metrics.items():
             tensorboard_writer.add_scalar(key, value, e)
+
+        if contrastive:
+            log_vars = model.log_vars.detach().cpu()
+
+            log_vars_dict = {f"log_vars/stage_{idx}": lv.item() for idx, lv in enumerate(log_vars)}
+            wandb_run.log(log_vars_dict, step=e)
+        
+        if config["model"].get("scheduler", None) == "CosineAnnealingLR":
+            scheduler.step()
+
     
     if contrastive :
 

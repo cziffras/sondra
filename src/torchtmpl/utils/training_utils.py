@@ -110,7 +110,6 @@ def train_one_epoch(
             (
                 torch.optim.lr_scheduler.CyclicLR,
                 torch.optim.lr_scheduler.OneCycleLR,
-                torch.optim.lr_scheduler.CosineAnnealingLR,
             ),
         ):
             scheduler.step()

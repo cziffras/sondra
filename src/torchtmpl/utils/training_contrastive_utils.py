@@ -21,7 +21,7 @@ def train_one_contrastive_epoch(
     scheduler,
     device: torch.device,
     max_norm: float = 2.5,
-    lambda_kl: float = 0.1,
+    lambda_l2: float = 1,
     epoch: int = 0,
 ) -> dict:
     model.train()
@@ -30,7 +30,6 @@ def train_one_contrastive_epoch(
     gradient_norm_sum = 0.0
     num_samples = 0
     num_batches = 0
-    N = len(model.loss_weights) 
 
     for x1, x2 in tqdm.tqdm(loader, desc=f"Train Epoch {epoch}"):
         x1, x2 = x1.to(device), x2.to(device)
@@ -41,17 +40,14 @@ def train_one_contrastive_epoch(
         losses = torch.stack([f_loss(z1, z2) for z1, z2 in zip(zs1, zs2)], dim=0)
 
         # Learnable fusion of losses (again, instead of defining weights in config)
+        precision = torch.exp(-model.log_vars)   # 1/σ_i²
+        contrastive_loss = torch.sum(precision * losses)
 
-        u = torch.real(model.loss_weights)
-        w = F.softmax(u, dim=0)     # w_i >= 0, sum = 1
-        contrastive_loss = (w * losses).sum()
-
-        # KL-divergence vers l’uniforme u = 1/N
-        # formula  = KL(w || uniform) = sum_i w_i * log(w_i * N)
-        kl = torch.sum(w * torch.log(w * N + 1e-12))
-
-        # final loss
-        loss = contrastive_loss + lambda_kl * kl
+        # penalty (avoid negative weights)
+        l2_penalty = lambda_l2 * torch.sum(model.log_vars ** 2)
+        
+        # regularization log σ_i (cf. Kendall & Gal, CVPR 2018)
+        loss = contrastive_loss + torch.sum(model.log_vars) + l2_penalty
 
         # backward + clipping
         optim.zero_grad()
@@ -69,18 +65,12 @@ def train_one_contrastive_epoch(
         optim.step()
 
         with torch.no_grad():
-            rw = model.loss_weights.data.real
-            iw = model.loss_weights.data.imag
-
-            rw_clamped = rw.clamp(-10.0, 10.0)
-            iw_clamped = iw.clamp(-10.0, 10.0)
-
-            model.loss_weights.data = torch.complex(rw_clamped, iw_clamped)
+            model.log_vars.data.clamp_(-5.0, 5.0) 
 
         # step scheduler
         if isinstance(scheduler, (torch.optim.lr_scheduler.CyclicLR,
                                   torch.optim.lr_scheduler.OneCycleLR,
-                                  torch.optim.lr_scheduler.CosineAnnealingLR)):
+                                )):
             scheduler.step()
 
         elif isinstance(scheduler, torch.optim.lr_scheduler.CosineAnnealingWarmRestarts):
@@ -108,6 +98,7 @@ def valid_contrastive_epoch(
     loader: torch.utils.data.DataLoader,
     f_loss: nn.Module,
     device: torch.device,
+    lambda_l2: float = 1,
 ) -> dict:
     """
     Run one validation epoch for contrastive learning.
@@ -115,7 +106,7 @@ def valid_contrastive_epoch(
     Arguments:
         model: the SegFormer model with contrastive=True
         loader: DataLoader returning pairs (x1, x2)
-        criterion: NT-Xent loss module
+        f_loss: NT-Xent loss module
         device: torch device
 
     Returns:
@@ -125,7 +116,6 @@ def valid_contrastive_epoch(
     total_loss = 0.0
     num_samples = 0
 
-    # mind not accumulating the gradients
     with torch.no_grad():
         for x1, x2 in tqdm.tqdm(loader, desc="Valid"):
             x1, x2 = x1.to(device), x2.to(device)
@@ -139,11 +129,12 @@ def valid_contrastive_epoch(
                 for z1, z2 in zip(zs1, zs2)
             ], dim=0)  # shape = (num_stages,)
 
-            # Learnable fusion of losses
-            with torch.no_grad():  # ... except here they are fixed
-                weights = F.softmax(torch.real(model.loss_weights), dim=0)
+            # uncertainty weighing (Kendall & Gal, 2018)
+            precision = torch.exp(-model.log_vars)          # 1/σ_i² 
 
-            loss = (weights * losses).sum()
+            l2_penalty = lambda_l2 * torch.sum(model.log_vars ** 2)
+
+            loss = (precision * losses).sum() + model.log_vars.sum() + l2_penalty
 
             batch_size = x1.size(0)
             total_loss += loss.item() * batch_size

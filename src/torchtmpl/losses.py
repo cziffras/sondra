@@ -5,8 +5,7 @@ import torch.nn.functional as F
 
 class NTXentLoss(nn.Module):
     """
-    NT-Xent Loss améliorée pour embeddings réels ou complexes.
-    Stabilisation via epsilons et clamp.
+    NT-Xent Loss with regularization features
     """
     def __init__(self, temperature: float = 0.1, eps: float = 1e-6):
         super().__init__()
@@ -16,22 +15,19 @@ class NTXentLoss(nn.Module):
     def forward(self, z1: torch.Tensor, z2: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            z1, z2: Tensors de shape (N, D), peuvent être complexes.
-        Returns:
-            perte scalaire moyenne.
+            z1, z2: Tensors of shape (N, D) loss supports type complex
         """
-        # 1) Concaténation
+        # Concat
         z = torch.cat([z1, z2], dim=0)  # (2N, D)
 
-        # 2) Normalisation L2 (avec epsilon)
-        #    ||z_i|| = sqrt(sum |z_i|^2) clamp à eps min
+        # L2 norm with epsilon
+        # ||z_i|| = sqrt(sum |z_i|^2) clamp with eps min
         norm = torch.linalg.norm(z, dim=1, keepdim=True).clamp_min(self.eps)
         z_normalized = z / norm  # shape (2N, D)
 
-        # 3) Matrice de similarité cosinus
-        #    si complexe, on prend la partie réelle
-        sim = torch.matmul(z_normalized, z_normalized.conj().T).real  # (2N, 2N)
-        # on clamp les valeurs extrêmes pour éviter overflow
+        # similarity with module of hermitian products
+        sim = torch.abs(torch.matmul(z_normalized, z_normalized.conj().T))  # (2N, 2N)
+        # clamp to avoid overflow
         sim = sim.clamp(-1 + self.eps, 1 - self.eps)
 
         N = z1.size(0)
@@ -44,21 +40,20 @@ class NTXentLoss(nn.Module):
         positives = torch.cat([pos_1, pos_2], dim=0).unsqueeze(1)  # (2N,1)
 
         # mask to exclude diagonals
-        #    True where i != j, False on diagonale
-        #    on veut un mask booléen pour logsumexp
+        # True where i != j, False on diagonal
         mask = ~torch.eye(2 * N, device=device, dtype=torch.bool)
 
-        # 6) Logits = sim / temperature, on masque diag puis logsumexp
+        # Logits = sim / temperature, we mask diag then logsumexp
         logits = sim / self.temperature
         # on met très bas les diagonnales pour qu'elles n'entrent pas dans logsumexp
         logits_masked = logits.masked_fill(~mask, float("-inf"))
 
-        # 7) Calcul de la perte pour chaque ligne
-        #    -log(exp(sim_pos/τ) / sum(exp(sim_all/τ)))
-        #    = - (sim_pos/τ) + logsumexp(sim_all/τ)
+        # Loss for each row
+        # -log(exp(sim_pos/T) / sum(exp(sim_all/T)))
+        # = - (sim_pos/T) + logsumexp(sim_all/T)
         loss_per_sample = -positives / self.temperature + torch.logsumexp(logits_masked, dim=1, keepdim=True)
 
-        # 8) Moyenne sur toutes les paires
+        # mean on all pairs
         return loss_per_sample.mean()
 
 class FocalLoss(nn.Module):
