@@ -3,6 +3,85 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+class NTXentKendall(nn.Module):
+    """
+    Learnable linear combination (Kendall & Gal, 2018) of multi stage NT‑Xent
+    
+    Args: 
+        `num_stages` : nb of stages (4 in this work)
+        `lambda_l2` : weighing of the L² penalty on log \sigma_i²
+    """
+    def __init__(self,
+                 num_stages: int,
+                 temperature: float = 0.1,
+                 eps: float = 1e-6,
+                 lambda_reg: float = 1.0):
+        super().__init__()
+        self.nt_xent   = NTXentLoss(temperature, eps)
+        self.log_vars  = nn.Parameter(torch.zeros(num_stages), requires_grad=True)  # log \sigma_i²
+        self.lambda_l2 = lambda_reg
+
+    def forward(self,
+                zs1: list[torch.Tensor],   # list of tensors (B,D)
+                zs2: list[torch.Tensor]) -> torch.Tensor:
+
+        if len(zs1) != len(zs2):
+            raise ValueError("Embeddings lists must have same length")
+
+        losses = torch.stack([self.nt_xent(z1, z2) for z1, z2 in zip(zs1, zs2)], dim=0)
+        precision = torch.exp(-self.log_vars)            # 1/ \sigma_i²
+
+        loss = (precision * losses).sum()                
+        loss += self.log_vars.sum()                  
+        loss += self.lambda_l2 * (self.log_vars ** 2).sum()  # L² penalty
+
+        return loss
+
+    @property
+    def weights(self) -> torch.Tensor:
+        "Returns normalised weights from log_vars to monitor collapsing"
+        precision = torch.exp(-self.log_vars)
+        return (precision / precision.sum()).detach()
+
+class NTXentKLUnif(nn.Module):
+    """
+    Learnable linear combination of multi stage NT‑Xent with KL div regularization
+    
+    Args: 
+        `num_stages` : nb of stages (4 in this work)
+        `lambda_kl` : weighing of the KL div against uniform distribution penalty 
+    """
+    def __init__(self,
+                 num_stages: int,
+                 temperature: float = 0.1,
+                 eps: float = 1e-6,
+                 lambda_reg: float = 1):
+        super().__init__()
+        self.nt_xent   = NTXentLoss(temperature, eps)
+        self.logits    = nn.Parameter(torch.zeros(num_stages), requires_grad=True)  # logits w_i
+        self.lambda_kl = lambda_reg
+        self.N = num_stages
+
+    def forward(self,
+                zs1: list[torch.Tensor],
+                zs2: list[torch.Tensor]) -> torch.Tensor:
+
+        if len(zs1) != len(zs2):
+            raise ValueError("Embeddings lists must have same length")
+    
+        w  = F.softmax(self.logits.real, dim=0)         # (N,) – real, >=0, somme=1
+        losses = torch.stack([self.nt_xent(z1, z2) for z1, z2 in zip(zs1, zs2)])  # (N,)
+
+        # fusion + KL regularization 
+        kl = torch.sum(w * torch.log(w * self.N + 1e-12)) # KL(w || U)
+
+        return torch.sum(w * losses) + self.lambda_kl * kl
+
+    @property
+    def weights(self) -> torch.Tensor:
+        "Returns normalised weights to monitor collapsing w_i"
+        return F.softmax(self.logits, dim=0).detach()
+    
 class NTXentLoss(nn.Module):
     """
     NT-Xent Loss with regularization features
@@ -113,14 +192,16 @@ class FocalLoss(nn.Module):
 
         return loss.mean()
 
-def get_loss(lossname, **loss_kwargs):
-    "Use CrossEntropyLoss as a baseline for segmentation task"
-    if lossname=="NTXentLoss":
-        return NTXentLoss(**loss_kwargs)
-    elif lossname=="FocalLoss":
-        return FocalLoss(**loss_kwargs)
+def get_loss(lossname, **kwargs):
+    if lossname == "NTXentLoss":
+        return NTXentLoss(**kwargs)
+    if lossname == "NTXentKendall":
+        return NTXentKendall(**kwargs)
+    if lossname == "NTXentKLUnif":
+        return NTXentKLUnif(**kwargs)
+    if lossname == "FocalLoss":
+        return FocalLoss(**kwargs)
     try:
-        loss_class = getattr(nn, lossname)
+        return getattr(nn, lossname)(**kwargs)
     except AttributeError:
-        raise ValueError(f"Loss '{lossname}' does not exist in torch.nn.")
-    return loss_class(**loss_kwargs)
+        raise ValueError(f"Loss '{lossname}' unknown in torch.nn.")
