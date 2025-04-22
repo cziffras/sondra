@@ -65,7 +65,11 @@ def train(config, wandb_run, visualize):
     # Build the loss
     logging.info("= Loss")
     if contrastive:
-        loss = losses.get_loss(config["loss"]["name"])
+        loss = losses.get_loss(
+            config["loss"]["name"],
+            num_stages = len(list(config["model"]["widths"])),
+            lambda_reg  = config["model"].get("lambda_reg", 1.0)
+        ).to(device)
     else:
         loss = losses.get_loss(config["loss"]["name"], ignore_index=0)
 
@@ -151,7 +155,7 @@ def train(config, wandb_run, visualize):
                 scheduler=scheduler,
                 device=device,
                 epoch=e,
-                lambda_l2=config["model"].get("lambda_l2", 0.1)
+                lambda_reg=config["model"].get("lambda_reg", 1),
             )
         
         else: 
@@ -174,7 +178,7 @@ def train(config, wandb_run, visualize):
                 loader=valid_loader,
                 f_loss=loss,
                 device=device,
-                lambda_l2=config["model"].get("lambda_l2", 0.1)
+                lambda_reg=config["model"].get("lambda_reg", 1)
             )
         else: 
             valid_metrics =  valid_func(
@@ -187,6 +191,36 @@ def train(config, wandb_run, visualize):
             
         valid_loss = valid_metrics["valid_loss"]
 
+        metrics = {
+            "train_loss": train_loss, 
+            "valid_loss": valid_loss,
+        }
+
+        if not contrastive:
+            metrics["valid_overall_accuracy"] = valid_metrics["valid_overall_accuracy"]
+
+        log_vars_dict = {} 
+        weights_dict = {}
+
+        if contrastive:
+            # log_vars
+            if hasattr(loss, "log_vars"):
+                lv = loss.weights.cpu()
+                log_vars_dict = {f"log_vars/stage_{i}": lv[i].item() for i in range(len(lv))}
+                for k,v in log_vars_dict.items():
+                    tensorboard_writer.add_scalar(k, v, e)
+
+            # weights
+            if hasattr(loss, "logits"):
+                ws = loss.weights.cpu()
+                weights_dict = {f"weights/stage_{i}": ws[i].item() for i in range(len(ws))}
+                for k,v in weights_dict.items():
+                    tensorboard_writer.add_scalar(k, v, e)
+
+        all_logs = {**metrics, **log_vars_dict, **weights_dict}
+        wandb_run.log(all_logs, step=e)
+
+        # Logging messages
         if not contrastive:
             valid_accuracy = valid_metrics.get("valid_overall_accuracy", None)
             accuracy_msg = f", Accuracy : {valid_accuracy:.3f}% " if valid_accuracy is not None else ""
@@ -206,26 +240,10 @@ def train(config, wandb_run, visualize):
             accuracy_msg,  # Remplacé accuracy_msg par accuracy
             "[>> BETTER <<]" if updated else "",
         )
-        # Mise à jour des dashboards
-        metrics = {
-            "train_loss": train_loss, 
-            "valid_loss": valid_loss,
-        }
-
-        if not contrastive:
-            metrics["valid_overall_accuracy"] = valid_metrics["valid_overall_accuracy"]
-
-        wandb_run.log(metrics)
 
         for key, value in metrics.items():
             tensorboard_writer.add_scalar(key, value, e)
 
-        if contrastive:
-            log_vars = model.log_vars.detach().cpu()
-
-            log_vars_dict = {f"log_vars/stage_{idx}": lv.item() for idx, lv in enumerate(log_vars)}
-            wandb_run.log(log_vars_dict, step=e)
-        
         if config["model"].get("scheduler", None) == "CosineAnnealingLR":
             scheduler.step()
 
@@ -269,7 +287,7 @@ def train(config, wandb_run, visualize):
                 use_cuda=use_cuda
             )
         else:
-            wandb.log(metrics)
+            wandb_run.log(metrics)
 
 
         logging.info("###################### End of training ######################")

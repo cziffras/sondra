@@ -32,10 +32,10 @@ model:
   drop_prob: 0.1
   upsample_scale_factor: 4
   contrastive: True
-  lambda_l2: 3
+  lambda_reg: 3
 
 loss:
-  name: NTXentLoss # FocalLoss
+  name: NTXentKLUnif # FocalLoss
 
 optimizer:
   name: AdamW
