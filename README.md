@@ -1,6 +1,6 @@
 # Sondra – Semantic Segmentation for SAR Imagery
 
-Sondra is a student project conducted by three students from CentraleSupélec: Emmanuel Benichou, Rodolphe Durand, Lazare Plisson Arcos during supervised by Jérémy Fix (teacher on CentraleSupélec Metz Campus). This project is aiming to develop Deep Learning architecture compatible with SAR data in order to perform semantic segmentation on famous SAR imaging datasets. This repo focuses on Polarimetric San Francisco dataset that can be found on this [link](https://ietr-lab.univ-rennes1.fr/polsarpro-bio/san-francisco/).
+Sondra is a student project conducted by myself during my last year at CentraleSupélec supervised by Jérémy Fix (teacher on CentraleSupélec Metz Campus). This project is aiming to develop Deep Learning architecture compatible with SAR data in order to perform semantic segmentation on famous SAR imaging datasets. This repo focuses on Polarimetric San Francisco dataset that can be found on this [link](https://ietr-lab.univ-rennes1.fr/polsarpro-bio/san-francisco/).
 
 ---
 
