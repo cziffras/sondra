@@ -1,6 +1,8 @@
-# Sondra – Semantic Segmentation for SAR Imagery
+# Semantic Segmentation for SAR Imagery
 
-Sondra is a student project conducted by myself during my last year at CentraleSupélec supervised by Jérémy Fix (teacher on CentraleSupélec Metz Campus). This project is aiming to develop Deep Learning architecture compatible with SAR data in order to perform semantic segmentation on famous SAR imaging datasets. This repo focuses on Polarimetric San Francisco dataset that can be found on this [link](https://ietr-lab.univ-rennes1.fr/polsarpro-bio/san-francisco/).
+This is a student project conducted by myself during my last year at CentraleSupélec supervised by Jérémy Fix (teacher on CentraleSupélec Metz Campus). This project is aiming to develop Deep Learning architecture compatible with SAR data in order to perform semantic segmentation on famous SAR imaging datasets. This repo focuses on Polarimetric San Francisco dataset that can be found on this [link](https://ietr-lab.univ-rennes1.fr/polsarpro-bio/san-francisco/).
+
+PLEASE : if you are trying to get more information go check on [notes.md](notes.md)
 
 ---
 
@@ -67,7 +69,7 @@ sondra/
 ├── configs/              # YAML config files for experiments
 ├── src/torchtmpl/        # Core implementation (datasets, models, training, etc.)
 ├── logs/                 # logging outputs
-└── piprequirements.txt   # Dependency list compatible with pip
+└── requirements.txt   # Dependency list compatible with pip
 ```
 
 ---

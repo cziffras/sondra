@@ -199,7 +199,8 @@ def train(config, wandb_run, visualize):
         if not contrastive:
             metrics["valid_overall_accuracy"] = valid_metrics["valid_overall_accuracy"]
 
-        log_vars_dict = {} 
+        log_vars_dict = {}
+        beta_dict = {}
         weights_dict = {}
 
         if contrastive:
@@ -210,6 +211,12 @@ def train(config, wandb_run, visualize):
                 for k,v in log_vars_dict.items():
                     tensorboard_writer.add_scalar(k, v, e)
 
+            if hasattr(loss, "log_beta"):
+                bw = loss.weights.cpu()
+                beta_dict = {f"beta_weights/stage_{i}": bw[i].item() for i in range(len(bw))}
+                for k,v in beta_dict.items():
+                    tensorboard_writer.add_scalar(k, v, e)
+
             # weights
             if hasattr(loss, "logits"):
                 ws = loss.weights.cpu()
@@ -217,7 +224,7 @@ def train(config, wandb_run, visualize):
                 for k,v in weights_dict.items():
                     tensorboard_writer.add_scalar(k, v, e)
 
-        all_logs = {**metrics, **log_vars_dict, **weights_dict}
+        all_logs = {**metrics, **log_vars_dict, **beta_dict, **weights_dict}
         wandb_run.log(all_logs, step=e)
 
         # Logging messages

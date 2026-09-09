@@ -1,5 +1,5 @@
-import torch 
-import torch.nn as nn 
+import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 
@@ -9,7 +9,7 @@ class NTXentKendall(nn.Module):
     
     Args: 
         `num_stages` : nb of stages (4 in this work)
-        `lambda_l2` : weighing of the L² penalty on log \sigma_i²
+        `lambda_l2` : weighing of the L² penalty on log sigma_i²
     """
     def __init__(self,
                  num_stages: int,
@@ -81,7 +81,46 @@ class NTXentKLUnif(nn.Module):
     def weights(self) -> torch.Tensor:
         "Returns normalised weights to monitor collapsing w_i"
         return F.softmax(self.logits, dim=0).detach()
-    
+
+class NTXentLearnableTemp(nn.Module):
+    """
+    See notes.md, section "Third try : the learnable temperature"
+    """
+    def __init__(self,
+                 num_stages: int,
+                 init_temperature: float = 0.1,
+                 eps: float = 1e-6,
+                 lambda_reg: float = 1.0):
+        super().__init__()
+        self.nt_xent  = NTXentLoss(eps=eps)
+        init_log_beta = -torch.log(torch.tensor(float(init_temperature)))
+        self.log_beta = nn.Parameter(torch.full((num_stages,), init_log_beta.item()))
+        self.lambda_kl = lambda_reg
+        self.N = num_stages
+
+    def forward(self,
+                zs1: list[torch.Tensor],
+                zs2: list[torch.Tensor]) -> torch.Tensor:
+
+        if len(zs1) != len(zs2):
+            raise ValueError("Embeddings lists must have same length")
+
+        beta = torch.exp(self.log_beta)
+        losses = torch.stack(
+            [self.nt_xent(z1, z2, temperature=1.0 / b) for z1, z2, b in zip(zs1, zs2, beta)],
+            dim=0,
+        )
+
+        w  = beta / beta.sum()
+        kl = torch.sum(w * torch.log(w * self.N + 1e-12))
+
+        return losses.sum() + self.lambda_kl * kl
+
+    @property
+    def weights(self) -> torch.Tensor:
+        beta = torch.exp(self.log_beta)
+        return (beta / beta.sum()).detach()
+
 class NTXentLoss(nn.Module):
     """
     NT-Xent Loss with regularization features
@@ -91,7 +130,8 @@ class NTXentLoss(nn.Module):
         self.temperature = temperature
         self.eps = eps
 
-    def forward(self, z1: torch.Tensor, z2: torch.Tensor) -> torch.Tensor:
+    def forward(self, z1: torch.Tensor, z2: torch.Tensor,
+                temperature: float | torch.Tensor | None = None) -> torch.Tensor:
         """
         Args:
             z1, z2: Tensors of shape (N, D) loss supports type complex
@@ -122,15 +162,17 @@ class NTXentLoss(nn.Module):
         # True where i != j, False on diagonal
         mask = ~torch.eye(2 * N, device=device, dtype=torch.bool)
 
+        tau = self.temperature if temperature is None else temperature
+
         # Logits = sim / temperature, we mask diag then logsumexp
-        logits = sim / self.temperature
+        logits = sim / tau
         # on met très bas les diagonnales pour qu'elles n'entrent pas dans logsumexp
         logits_masked = logits.masked_fill(~mask, float("-inf"))
 
         # Loss for each row
         # -log(exp(sim_pos/T) / sum(exp(sim_all/T)))
         # = - (sim_pos/T) + logsumexp(sim_all/T)
-        loss_per_sample = -positives / self.temperature + torch.logsumexp(logits_masked, dim=1, keepdim=True)
+        loss_per_sample = -positives / tau + torch.logsumexp(logits_masked, dim=1, keepdim=True)
 
         # mean on all pairs
         return loss_per_sample.mean()
@@ -199,6 +241,8 @@ def get_loss(lossname, **kwargs):
         return NTXentKendall(**kwargs)
     if lossname == "NTXentKLUnif":
         return NTXentKLUnif(**kwargs)
+    if lossname == "NTXentLearnableTemp":
+        return NTXentLearnableTemp(**kwargs)
     if lossname == "FocalLoss":
         return FocalLoss(**kwargs)
     try:

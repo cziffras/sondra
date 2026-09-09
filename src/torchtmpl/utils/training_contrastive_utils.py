@@ -68,7 +68,10 @@ def train_one_contrastive_epoch( # Only for multi stage model (implement a multi
         optim.step()
         if hasattr(f_loss, "log_vars"):
             with torch.no_grad():
-                f_loss.log_vars.data.clamp_(-5.0, 5.0) 
+                f_loss.log_vars.data.clamp_(-5.0, 5.0)
+        if hasattr(f_loss, "log_beta"):
+            with torch.no_grad():
+                f_loss.log_beta.data.clamp_(-5.0, 5.0)
 
         # step scheduler
         if isinstance(scheduler, (torch.optim.lr_scheduler.CyclicLR,
