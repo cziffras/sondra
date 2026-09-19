@@ -223,7 +223,7 @@ def reassemble_image(
             segments[segment_index]
         )
 
-        if mask is not None:
+        if sets_indices is not None and mask is not None:
             if real_index in sets_indices[0]:
                 mask[
                     :,
@@ -269,8 +269,10 @@ def one_forward_with_conf_mat(model, loader, device, number_classes, ignore_inde
                 else:
                     raise ValueError("Unexpected data format in loader.")
             else:
-                inputs = data
-                labels = None
+                raise ValueError(
+                    "This loader yields inputs without labels, but a confusion matrix "
+                    "is computed here: use a loader returning (inputs, labels)."
+                )
 
             inputs = inputs.to(device)
 

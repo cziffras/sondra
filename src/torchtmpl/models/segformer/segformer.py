@@ -132,20 +132,21 @@ class SegmentationSegformer(SegFormer):
                 scale_factor=self.upsample_scale_factor, mode="bilinear", align_corners=False
             )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor | list[Tensor]:
         """
         Forward pass through the segmentation model.
 
-        It first calls the base SegFormer forward to compute the segmentation map,
-        and optionally applies a global upsampling layer if specified in the configuration.
+        In supervised mode this returns the segmentation map of shape
+        (B, num_classes, H_out, W_out), optionally upsampled by
+        `upsample_scale_factor`. In contrastive mode the backbone returns one
+        projected embedding per stage instead, and no upsampling applies.
 
         Args:
             x (Tensor): Input tensor of shape (B, C, H, W)
-
-        Returns:
-            Tensor: Segmentation map of shape (B, num_classes, H_out, W_out)
         """
-        segmentation: Tensor = super().forward(x)
-        if hasattr(self, "upsample_layer") and not self.contrastive:
-            segmentation = self.upsample_layer(segmentation)
-        return segmentation
+        out = super().forward(x)
+        if self.contrastive:
+            return out
+        if hasattr(self, "upsample_layer"):
+            out = self.upsample_layer(out)
+        return out

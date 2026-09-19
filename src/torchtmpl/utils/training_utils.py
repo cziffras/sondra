@@ -20,7 +20,7 @@ def train_one_epoch(
     loader: torch.utils.data.DataLoader,
     f_loss: nn.Module,
     optim: torch.optim.Optimizer,
-    scheduler: torch.optim.lr_scheduler,
+    scheduler: torch.optim.lr_scheduler.LRScheduler | None,
     device: torch.device,
     number_classes,
     epoch: int,
@@ -417,7 +417,7 @@ class ModelCheckpoint:
             return True
         return False
 
-    def load_best_checkpoint(self) -> int:
+    def load_best_checkpoint(self) -> tuple[nn.Module, torch.optim.Optimizer, float]:
 
         filepath = os.path.join(self.savepath, "best_model.pt")
         if not os.path.isfile(filepath):

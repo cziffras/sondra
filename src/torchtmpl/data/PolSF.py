@@ -39,8 +39,14 @@ class EnhancedPolSFDataset(ALOSDataset):
         if not contrastive_mode:
             crop_coordinates = ((2832, 736), (7888, 3520))
 
-        if isinstance(root, str) and not root.endswith(self.ALOS_PATH_SUFFIX):
-            root = pathlib.Path(root) / self.ALOS_PATH_SUFFIX
+        root = pathlib.Path(root)
+        if root.name != self.ALOS_PATH_SUFFIX:
+            root = root / self.ALOS_PATH_SUFFIX
+        if not root.is_file():
+            raise FileNotFoundError(
+                f"ALOS-2 volume file not found at {root}. Point data.root_dir at the "
+                f"directory holding {self.ALOS_PATH_SUFFIX} and SF-ALOS2-label2d.png."
+            )
 
         super().__init__(
             volpath=root,
@@ -58,13 +64,13 @@ class EnhancedPolSFDataset(ALOSDataset):
         self.to_tensor_labels = ToTensor(dtype=torch.int64)
 
         self.classes = [
-            "0 - unlabel",
-            "1 - Montain",
+            "0 - Unlabeled",
+            "1 - Mountain",
             "2 - Water",
             "3 - Vegetation",
             "4 - High-Density Urban",
             "5 - Low-Density Urban",
-            "6 - Developd",
+            "6 - Developed",
         ]
 
         if not contrastive_mode:
