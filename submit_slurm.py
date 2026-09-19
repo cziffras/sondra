@@ -1,8 +1,8 @@
 #!/usr/bin/python
 
 import os
-import sys
 import subprocess
+import sys
 import tempfile
 
 
@@ -79,17 +79,12 @@ result = int(
 )
 if result > 0:
     print(f"We found {result} modifications either not staged or not commited")
-    raise RuntimeError(
-        "You must stage and commit every modification before submission "
-    )
+    raise RuntimeError("You must stage and commit every modification before submission ")
 
-commit_id = subprocess.check_output(
-    "git log --pretty=format:'%H' -n 1", shell=True
-).decode()
+commit_id = subprocess.check_output("git log --pretty=format:'%H' -n 1", shell=True).decode()
 
 print(f"I will be using the commit id {commit_id}")
 
-# Ensure the log directory exists
 os.system("mkdir -p logslurms")
 
 if len(sys.argv) not in [2, 3]:
@@ -102,10 +97,8 @@ if len(sys.argv) == 2:
 else:
     nruns = int(sys.argv[2])
 
-# Copy the config in a temporary config file
 os.system("mkdir -p configs")
 tmp_configfilepath = tempfile.mkstemp(dir="./configs", suffix="-config.yml")[1]
 os.system(f"cp {configpath} {tmp_configfilepath}")
 
-# Launch the batch jobs
 submit_job(makejob(commit_id, tmp_configfilepath, nruns))

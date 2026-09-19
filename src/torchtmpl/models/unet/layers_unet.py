@@ -1,9 +1,7 @@
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 import torchcvnn.nn.modules as c_nn
-
-from functools import partial
+from torch import nn
 
 
 class DoubleConv(nn.Module):
@@ -26,8 +24,7 @@ class DoubleConv(nn.Module):
         if not mid_channels:
             mid_channels = out_channels
         if stride == 1:
-            padding = "same"  # padding='same' pads the input so the output has the shape as the input.
-            # However, this mode doesn’t support any stride values other than 1.
+            padding = "same"
         else:
             padding = 1
 
@@ -173,9 +170,7 @@ class Up(nn.Module):
     ):
         super().__init__()
         if upsampling_method == "Upsample":
-            self.upsampling_method = c_nn.Upsample(
-                scale_factor=upsampling_factor, mode="bilinear"
-            )
+            self.upsampling_method = c_nn.Upsample(scale_factor=upsampling_factor, mode="bilinear")
 
         elif upsampling_method == "ConvTranspose":
             self.upsampling_method = c_nn.ConvTranspose2d(
@@ -207,7 +202,7 @@ class Up(nn.Module):
 
 class OutConv(nn.Module):
     def __init__(self, in_channels, out_channels):
-        super(OutConv, self).__init__()
+        super().__init__()
         self.conv = nn.Sequential(
             nn.Conv2d(
                 in_channels=in_channels,
@@ -226,11 +221,9 @@ def concat(x1, x2):
     if x2 is None:
         return x1
     else:
-        # input is CHW
         diffY = x2.size()[2] - x1.size()[2]
         diffX = x2.size()[3] - x1.size()[3]
 
         x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2, diffY // 2, diffY - diffY // 2])
         x = torch.cat([x2, x1], dim=1)
         return x
-

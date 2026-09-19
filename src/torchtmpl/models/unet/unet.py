@@ -1,9 +1,8 @@
-import torch
-import torch.nn as nn
-import torch.utils.checkpoint as checkpoint
-
-from .layers_unet import DoubleConv, Down, Up, OutConv
+from torch import nn
+from torch.utils import checkpoint
 from torchcvnn.nn.modules import modReLU
+
+from .layers_unet import DoubleConv, Down, OutConv, Up
 
 DOWNSAMPLING_FACTOR = 2
 UPSAMPLING_FACTOR = 2
@@ -23,14 +22,13 @@ class UNet(nn.Module):
         upsampling_method,
         dropout,
         num_classes=None,
-        contrastive=False
+        contrastive=False,
     ):
-        super(UNet, self).__init__()
-        
+        super().__init__()
+
         if isinstance(input_size, tuple):
             input_size = input_size[0]
 
-        # Encoder with doubzling channels
         current_channels = channels_ratio
         self.encoder_layers = []
         self.bridge_layers = []
@@ -122,7 +120,6 @@ class UNet(nn.Module):
         x = self.bridge_block(x)
 
         if self.contrastive:
-            
             batch_size = x.shape[0]
             return x.view(batch_size, -1)
 
@@ -146,18 +143,17 @@ class UNet(nn.Module):
             self.decoder_block[i] = checkpoint.checkpoint(layer)
 
 
-################### Segmentation Unet Wrapper #############################
-
 class SegmentationUNet(UNet):
     """
     A wrapper for UNet model.
     """
+
     def __init__(self, cfg, input_size, num_classes):
-        
+
         activation_dict = {
             "modReLU": modReLU,
         }
-        
+
         num_channels = cfg.get("num_channels", 3)
         num_layers = cfg.get("num_layers", 4)
         channels_ratio = cfg.get("channels_ratio", 64)
@@ -183,16 +179,16 @@ class SegmentationUNet(UNet):
             upsampling_method=upsampling_method,
             dropout=dropout,
             num_classes=num_classes,
-            contrastive=contrastive
+            contrastive=contrastive,
         )
 
         if upsample_scale_factor != 1:
-            self.upsample_layer = nn.Upsample(scale_factor=upsample_scale_factor, mode='bilinear')
+            self.upsample_layer = nn.Upsample(scale_factor=upsample_scale_factor, mode="bilinear")
 
     def forward(self, x):
-   
+
         x = super().forward(x)
 
-        if hasattr(self, 'upsample_layer'):
+        if hasattr(self, "upsample_layer"):
             x = self.upsample_layer(x)
         return x
