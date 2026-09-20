@@ -12,6 +12,7 @@ from torch import nn
 
 from .metrics_utils import (
     compute_batch_confusion_matrix,
+    empty_confusion_matrix,
     normalize_confusion_matrix,
 )
 
@@ -255,8 +256,7 @@ def one_forward_with_conf_mat(model, loader, device, number_classes, ignore_inde
 
     list_of_indices = []
 
-    size = np.setdiff1d(np.arange(0, number_classes), np.array([ignore_index]))
-    conf_matrix_accum = np.zeros((len(size), len(size)))
+    evaluated_classes, conf_matrix_accum = empty_confusion_matrix(number_classes, ignore_index)
 
     with torch.no_grad():
         for _, data in enumerate(tqdm.tqdm(loader)):
@@ -286,9 +286,9 @@ def one_forward_with_conf_mat(model, loader, device, number_classes, ignore_inde
             labels_flat = labels.cpu().numpy().flatten()
             batch_cm = compute_batch_confusion_matrix(
                 predictions=pred_outputs.flatten(),
-                labels=labels_flat,
+                targets=labels_flat,
+                classes=evaluated_classes,
                 ignore_index=ignore_index,
-                size=size,
             )
 
             conf_matrix_accum += batch_cm

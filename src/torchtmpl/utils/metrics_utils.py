@@ -1,17 +1,17 @@
 # MIT License
-
+#
 # Copyright (c) 2023 Jeremy Fix
-
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-
+#
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
-
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -19,6 +19,8 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+
+# Code refactored by Emmanuel Benichou
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -84,14 +86,17 @@ def compute_batch_iou(predictions, labels, ignore_index=None):
     return jaccard_score(filtered_ground_truth, filtered_predictions, average="weighted")
 
 
-def compute_batch_confusion_matrix(predictions, labels, size, ignore_index):
-    mask = labels != ignore_index
-    predictions = predictions[mask]
-    labels = labels[mask]
+def empty_confusion_matrix(number_classes, ignore_index):
+    classes = np.setdiff1d(np.arange(number_classes), np.array([ignore_index]))
+    return classes, np.zeros((len(classes), len(classes)))
+
+
+def compute_batch_confusion_matrix(predictions, targets, classes, ignore_index):
+    mask = targets != ignore_index
     return confusion_matrix(
-        labels,
-        predictions,
-        labels=size,
+        targets[mask],
+        predictions[mask],
+        labels=classes,
     )
 
 
@@ -107,29 +112,18 @@ def compute_kappa(conf_matrix):
     return (observed_agreement - expected_agreement) / (1 - expected_agreement)
 
 
-def compute_iou(confusion_matrix):
+def compute_iou(conf_matrix):
+    tp = np.diag(conf_matrix)
+    fp = conf_matrix.sum(axis=0) - tp
+    fn = conf_matrix.sum(axis=1) - tp
+    union = tp + fp + fn
 
-    n_classes = confusion_matrix.shape[0]
-    iou_per_class = []
+    iou_per_class = np.divide(tp, union, out=np.zeros_like(tp, dtype=float), where=union > 0)
 
-    for c in range(n_classes):
-        tp = confusion_matrix[c, c]
-        fp = confusion_matrix[:, c].sum() - tp
-        fn = confusion_matrix[c, :].sum() - tp
-        union = tp + fp + fn
-        iou = tp / union if union > 0 else 0.0
-        iou_per_class.append(iou)
-
-    mean_iou = np.mean(iou_per_class)
-
-    return iou_per_class, mean_iou
+    return iou_per_class, iou_per_class.mean()
 
 
-def compute_classification_metrics(conf_matrix, ignore_index=None):
-    if ignore_index is not None:
-        conf_matrix = np.delete(conf_matrix, ignore_index, axis=0)
-        conf_matrix = np.delete(conf_matrix, ignore_index, axis=1)
-
+def compute_classification_metrics(conf_matrix):
     precision = np.diag(conf_matrix) / (conf_matrix.sum(axis=0) + 1e-6)
     recall = np.diag(conf_matrix) / (conf_matrix.sum(axis=1) + 1e-6)
     f1 = 2 * precision * recall / (precision + recall + 1e-6)

@@ -11,6 +11,7 @@ from .metrics_utils import (
     compute_iou,
     compute_kappa,
     compute_overall_accuracy,
+    empty_confusion_matrix,
     normalize_confusion_matrix,
 )
 
@@ -49,11 +50,10 @@ def train_one_epoch(
     num_batches = 0
     softmax = nn.Softmax(dim=1)
 
-    size = np.setdiff1d(np.arange(0, number_classes), np.array([ignore_index]))
-    conf_matrix_accum = np.zeros((len(size), len(size)))
+    evaluated_classes, conf_matrix_accum = empty_confusion_matrix(number_classes, ignore_index)
 
     for data in tqdm.tqdm(loader):
-        if isinstance(data, tuple) or isinstance(data, list):
+        if isinstance(data, (tuple, list)):
             inputs, labels = data
             labels = labels.to(device)
         else:
@@ -74,9 +74,9 @@ def train_one_epoch(
 
         batch_cm = compute_batch_confusion_matrix(
             predictions=predictions_flat,
-            labels=labels_flat,
+            targets=labels_flat,
+            classes=evaluated_classes,
             ignore_index=ignore_index,
-            size=size,
         )
         conf_matrix_accum += batch_cm
 
@@ -117,7 +117,7 @@ def train_one_epoch(
 
     overall_accuracy = compute_overall_accuracy(conf_matrix_accum)
     kappa_score = compute_kappa(conf_matrix_accum)
-    metrics_classif = compute_classification_metrics(conf_matrix_accum, ignore_index)
+    metrics_classif = compute_classification_metrics(conf_matrix_accum)
     metrics["train_overall_accuracy"] = 100 * overall_accuracy
     metrics["train_kappa_score"] = 100 * kappa_score
     metrics["train_macro_precision"] = 100 * metrics_classif["macro_precision"]
@@ -161,12 +161,11 @@ def valid_epoch(
     num_batches = 0
     softmax = nn.Softmax(dim=1)
 
-    size = np.setdiff1d(np.arange(0, number_classes), np.array([ignore_index]))
-    conf_matrix_accum = np.zeros((len(size), len(size)))
+    evaluated_classes, conf_matrix_accum = empty_confusion_matrix(number_classes, ignore_index)
 
     with torch.no_grad():
         for data in tqdm.tqdm(loader):
-            if isinstance(data, tuple) or isinstance(data, list):
+            if isinstance(data, (tuple, list)):
                 inputs, labels = data
                 labels = labels.to(device)
             else:
@@ -187,9 +186,9 @@ def valid_epoch(
 
             batch_cm = compute_batch_confusion_matrix(
                 predictions=predictions_flat,
-                labels=labels_flat,
+                targets=labels_flat,
+                classes=evaluated_classes,
                 ignore_index=ignore_index,
-                size=size,
             )
             conf_matrix_accum += batch_cm
 
@@ -201,7 +200,7 @@ def valid_epoch(
 
     overall_accuracy = compute_overall_accuracy(conf_matrix_accum)
     kappa_score = compute_kappa(conf_matrix_accum)
-    metrics_classif = compute_classification_metrics(conf_matrix_accum, ignore_index)
+    metrics_classif = compute_classification_metrics(conf_matrix_accum)
     metrics["valid_overall_accuracy"] = 100 * overall_accuracy
     metrics["valid_kappa_score"] = 100 * kappa_score
     metrics["valid_macro_precision"] = 100 * metrics_classif["macro_precision"]
@@ -232,14 +231,13 @@ def test_epoch(
     num_batches = 0
     softmax = nn.Softmax(dim=1)
 
-    size = np.setdiff1d(np.arange(0, number_classes), np.array([ignore_index]))
-    conf_matrix_accum = np.zeros((len(size), len(size)))
+    evaluated_classes, conf_matrix_accum = empty_confusion_matrix(number_classes, ignore_index)
 
     to_be_vizualized = []
 
     with torch.no_grad():
         for data in tqdm.tqdm(loader):
-            if isinstance(data, tuple) or isinstance(data, list):
+            if isinstance(data, (tuple, list)):
                 inputs, labels = data
                 labels = labels.to(device)
             else:
@@ -267,9 +265,9 @@ def test_epoch(
 
             batch_cm = compute_batch_confusion_matrix(
                 predictions=predictions_flat,
-                labels=labels_flat,
+                targets=labels_flat,
+                classes=evaluated_classes,
                 ignore_index=ignore_index,
-                size=size,
             )
 
             conf_matrix_accum += batch_cm
@@ -281,8 +279,8 @@ def test_epoch(
 
     overall_accuracy = compute_overall_accuracy(conf_matrix_accum)
     kappa_score = compute_kappa(conf_matrix_accum)
-    metrics_classif = compute_classification_metrics(conf_matrix_accum, ignore_index)
-    conf_matrix_accum = normalize_confusion_matrix(conf_matrix_accum)
+    metrics_classif = compute_classification_metrics(conf_matrix_accum)
+    iou_classes, mean_iou = compute_iou(conf_matrix_accum)
 
     metrics["test_overall_accuracy"] = 100 * overall_accuracy
     metrics["test_kappa_score"] = 100 * kappa_score
@@ -292,11 +290,12 @@ def test_epoch(
     metrics["test_precision_per_class"] = 100 * metrics_classif["precision_per_class"]
     metrics["test_recall_per_class"] = 100 * metrics_classif["recall_per_class"]
     metrics["test_f1_per_class"] = 100 * metrics_classif["f1_per_class"]
-    iou_classes, mean_iou = compute_iou(conf_matrix_accum)
     metrics["test_iou_per_class"] = 100 * iou_classes
     metrics["test_mean_iou"] = 100 * mean_iou
 
-    return metrics, to_be_vizualized, conf_matrix_accum
+    # every metric above reads raw counts; only the returned matrix is
+    # row-normalised, for the heatmap
+    return metrics, to_be_vizualized, normalize_confusion_matrix(conf_matrix_accum)
 
 
 def one_forward(model, loader, device):

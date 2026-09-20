@@ -285,17 +285,17 @@ if __name__ == "__main__":
     logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
 
     if len(sys.argv) != 2:
-        logging.error(f"Usage: {sys.argv[0]} config.yaml")
+        logging.error(f"Usage: {sys.argv[0]} config.yaml")  # noqa: LOG015
         sys.exit(-1)
 
     config_file = sys.argv[1]
 
-    logging.info(f"Loading config from {config_file}")
+    logging.info(f"Loading config from {config_file}")  # noqa: LOG015
     try:
         with open(config_file, "r") as f:
             config = yaml.safe_load(f)
     except Exception as e:
-        logging.error(f"Erreur lors du chargement du fichier de config: {e}")
+        logging.error(f"Erreur lors du chargement du fichier de config: {e}")  # noqa: LOG015
         sys.exit(-1)
 
     data_config = config["data"]
