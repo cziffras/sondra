@@ -1,4 +1,6 @@
-from .wrappers import get_polsf_dataloaders
+from .wrappers import Dataloaders, get_polsf_dataloaders
+
+__all__ = ["Dataloaders", "get_dataloaders"]
 
 _DATASETS = {
     "polsf": get_polsf_dataloaders,

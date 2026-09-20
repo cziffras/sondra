@@ -1,7 +1,7 @@
 import logging
 import pathlib
 import random
-
+import os 
 import numpy as np
 import torch
 from PIL import Image
@@ -15,10 +15,9 @@ from ..utils import ToTensor
 
 class EnhancedPolSFDataset(ALOSDataset):
     """
-    Dataset hybride : en mode supervisé (contrastive_mode=False),
-    le dataset se comporte comme PolSFDataset en fournissant patchs et labels,
-    tandis qu'en mode contrastif il se comporte comme ALOSDataset avec
-    des transformations contrastives.
+    Hybrid Dataset that behaves as PolSFDataset yielding patches and labels
+    in supervised mode and conversely provides two augmented views with contrastive 
+    transformations.
     """
 
     ALOS_PATH_SUFFIX = "VOL-ALOS2044980750-150324-HBQR1.1__A"
@@ -130,13 +129,13 @@ class PolSFDataManager:
     Manager that handles both datasets and dataloaders creation.
     """
 
-    def __init__(self, config, use_cuda=False, debug=False):
+    def __init__(self, config, use_cuda=False):
 
         self.config = config
         self.use_cuda = use_cuda
-        self.debug = debug
 
-        self.root_dir = config["root_dir"]
+        # POLSF_ROOT wins over the config
+        self.root_dir = os.environ.get("POLSF_ROOT", config["root_dir"])
         self.batch_size = config["batch_size"]
         self.num_workers = config["num_workers"]
         self.valid_ratio = config["valid_ratio"]
@@ -149,9 +148,6 @@ class PolSFDataManager:
             dataset = self._create_contrastive_dataset()
         else:
             dataset = self._create_standard_dataset()
-
-        if self.debug:
-            self._print_debug_info(dataset)
 
         logging.info(f"Loaded {len(dataset)} samples")
 
@@ -166,10 +162,14 @@ class PolSFDataManager:
         train_loader = torch.utils.data.DataLoader(train_dataset, shuffle=True, **loader_kwargs)
         valid_loader = torch.utils.data.DataLoader(valid_dataset, shuffle=False, **loader_kwargs)
 
-        num_classes = 1 if contrastive else len(dataset.classes)
+        # contrastive mode concatenates crops of the unlabelled regions, so there
+        # are no class names; num_classes stays at 1 because the segmentation head
+        # is built either way and cannot be sized to zero
+        classes = [] if contrastive else list(dataset.classes)
+        num_classes = 1 if contrastive else len(classes)
         input_size = tuple(dataset[0][0].shape)
 
-        return train_loader, valid_loader, input_size, num_classes
+        return train_loader, valid_loader, input_size, num_classes, classes
 
     def get_full_image_dataloader(self):
 
@@ -257,140 +257,6 @@ class PolSFDataManager:
         else:
             transform_args = self.config.get("transform_supervised", {})
             transform_params = transform_args.get("params", {})
-            transform = lambda x: x
+            transform = lambda x: x  # noqa: E731
 
         return transform
-
-    def _print_debug_info(self, dataset):
-        print("\n========== Dataset Debug Info ==========")
-        try:
-            first_item = dataset[0]
-            patch = first_item[0] if isinstance(first_item, tuple) else first_item
-
-            print(f"Patch shape: {patch.shape}")
-            print(f"Patch size: {self.patch_size}")
-            print(f"Patch stride: {self.patch_stride}")
-            print(f"Total patches: {len(dataset)}")
-        except Exception as e:
-            print(f"Error accessing patch: {e}")
-        print("========================================\n")
-
-
-if __name__ == "__main__":
-    import sys
-    from collections import defaultdict
-
-    import yaml
-
-    logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
-
-    if len(sys.argv) != 2:
-        logging.error(f"Usage: {sys.argv[0]} config.yaml")  # noqa: LOG015
-        sys.exit(-1)
-
-    config_file = sys.argv[1]
-
-    logging.info(f"Loading config from {config_file}")  # noqa: LOG015
-    try:
-        with open(config_file, "r") as f:
-            config = yaml.safe_load(f)
-    except Exception as e:
-        logging.error(f"Erreur lors du chargement du fichier de config: {e}")  # noqa: LOG015
-        sys.exit(-1)
-
-    data_config = config["data"]
-    data_manager = PolSFDataManager(data_config, use_cuda=True, debug=True)
-
-    if data_config.get("contrastive", False):
-        train_loader_c, val_loader_c, input_size_c, num_classes_c = data_manager.get_dataloaders(
-            contrastive=True
-        )
-
-        print("\n=== Contrastive mode ===")
-        print(f"Num samples in train loader (contrastive) : {len(train_loader_c.dataset)}")
-        print(f"Num samples in val loader (contrastive)   : {len(val_loader_c.dataset)}")
-        print(f"Input size (contrastive) : {input_size_c}")
-        print(f"Num classes (contrastive) : {num_classes_c}, should be 1")
-
-    else:
-        train_loader, val_loader, input_size, num_classes = data_manager.get_dataloaders(
-            contrastive=False
-        )
-
-        print("=== Supervised mode (Standard) ===")
-        print(f"Num samples in train loader : {len(train_loader.dataset)}")
-        print(f"Num samples in val loader : {len(val_loader.dataset)}")
-        print(f"Input size : {input_size}")
-        print(f"Num classes : {num_classes}")
-
-    if config.get("visualize", False):
-        full_loader, cols, rows = data_manager.get_full_image_dataloader()
-        print("\n=== Full Image Dataloader ===")
-        print(f"Num samples in full loader : {len(full_loader.dataset)}")
-        print(f"Num cols patches : {cols}")
-        print(f"Num rows patches : {rows}")
-
-    try:
-        train_loader, val_loader, input_size, num_classes = data_manager.get_dataloaders(
-            contrastive=False
-        )
-        std_batch = next(iter(train_loader))
-        print("\n== Batch in supervised mode ==")
-        if isinstance(std_batch, (list, tuple)):
-            data_std = std_batch[0]
-            target_std = std_batch[1]
-            print(f"Shape of input : {data_std.shape}, dtype : {data_std.dtype}")
-            print(f"Shape of target : {target_std.shape}, dtype : {target_std.dtype}")
-
-            loader = train_loader
-
-            total_targets = 0
-            total_uniform = 0
-            for batch in loader:
-                data, targets = batch
-
-                for target in targets:
-                    total_targets += 1
-                    if torch.all(target == target[0, 0]).item():
-                        total_uniform += 1
-
-            print("== Evaluating uniformity in targets ==")
-            print(f"{total_targets / total_uniform:.2f}% of targets are uniform")
-
-            classes_count = defaultdict(int)
-
-            max_class = 7
-            bins_total = None
-
-            for batch in loader:
-                _, targets = batch
-                flattened_targets = targets.view(-1)
-                bins = torch.bincount(flattened_targets, minlength=max_class)
-                if bins_total is None:
-                    bins_total = bins.clone()
-                else:
-                    bins_total += bins
-
-            total_occurrences = torch.sum(bins_total).item()
-
-            print("== Evaluation classes repartition in targets ==")
-            for i, count in enumerate(bins_total.tolist()):
-                percentage = count / total_occurrences * 100
-                print(f"Classe {i} : {percentage:.2f}%")
-
-        else:
-            print(f"Type : {type(std_batch)}")
-    except Exception as e:
-        print(f"Error trying to access batch : {e}")
-
-    try:
-        full_loader, cols, rows = data_manager.get_full_image_dataloader()
-        full_batch = next(iter(full_loader))
-        print("\n== Batch in full image dataloader ==")
-        if isinstance(full_batch, (list, tuple)):
-            data_full = full_batch[0]
-            print(f"Shape : {data_full.shape}")
-        else:
-            print(f"Type : {type(full_batch)}")
-    except Exception as e:
-        print(f"Error trying to access batch full image: {e}")

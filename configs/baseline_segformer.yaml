@@ -1,5 +1,5 @@
 data:
-  root_dir: "/media/emmanuel/T7/data/sondra/SAN_FRANCISCO_ALOS2"
+  root_dir: "/media/emmanuel/T7_Data/SAN_FRANCISCO_ALOS2"
   dataset: polsf
   batch_size: 16
   num_workers: 4

@@ -38,11 +38,11 @@ def train(config, wandb_run, visualize):
     logging.info("= Building the dataloaders")
     data_config = config["data"]
 
-    train_loader, valid_loader, input_size, num_classes = get_dataloaders(
-        data_config, use_cuda, contrastive
-    )
+    data = get_dataloaders(data_config, use_cuda, contrastive)
+    train_loader, valid_loader = data.train, data.valid
+    input_size, num_classes = data.input_size, data.num_classes
 
-    print(f"data input size : {input_size}, num_classes : {num_classes}")
+    logging.info(f"= Input size {input_size}, {num_classes} classes")
 
     logging.info("= Model")
     model_config = config["model"]
@@ -246,6 +246,34 @@ def train(config, wandb_run, visualize):
             device=device,
             number_classes=num_classes,
             ignore_index=0,
+        )
+
+        wandb_run.log(test_metrics)
+
+        wandb_run.log(
+            {
+                "test_per_class": wandb.Table(
+                    columns=["class", "precision", "recall", "f1", "iou"],
+                    data=[
+                        [name, p, r, f, i]
+                        for name, p, r, f, i in zip(
+                            data.classes[1:],
+                            test_metrics["test_precision_per_class"],
+                            test_metrics["test_recall_per_class"],
+                            test_metrics["test_f1_per_class"],
+                            test_metrics["test_iou_per_class"],
+                        )
+                    ],
+                )
+            }
+        )
+
+        logging.info(
+            "Test : accuracy %.2f%%, mean IoU %.2f%%, macro F1 %.2f%%, kappa %.2f%%",
+            test_metrics["test_overall_accuracy"],
+            test_metrics["test_mean_iou"],
+            test_metrics["test_macro_f1"],
+            test_metrics["test_kappa_score"],
         )
 
         log_confusion_matrix(

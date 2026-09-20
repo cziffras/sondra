@@ -5,11 +5,11 @@ def check_model_params_validity(config, use_cuda, contrastive):
 
     data_config = config["data"]
 
-    loader, _, input_size, num_classes = get_dataloaders(data_config, use_cuda, contrastive)
+    data = get_dataloaders(data_config, use_cuda, contrastive)
 
-    first_batch_inputs, _ = next(iter(loader))
+    first_batch_inputs, _ = next(iter(data.train))
 
-    model = build_model(config["model"], input_size, num_classes)
+    model = build_model(config["model"], data.input_size, data.num_classes)
 
     try:
         _ = model(first_batch_inputs)
