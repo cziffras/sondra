@@ -3,14 +3,9 @@ data:
   dataset: polsf
   batch_size: 16
   num_workers: 4
-  valid_ratio: 0.2
   patch_size: [64, 64]
-
-transform_contrastive:
-  params:
-
-transform_supervised:
-  params: # TODO
+  transform_contrastive:
+    params:
 
 nepochs: 12
 

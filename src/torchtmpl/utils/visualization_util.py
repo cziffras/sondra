@@ -6,9 +6,10 @@ import numpy as np
 import seaborn as sns
 import torch
 import tqdm
-import wandb
 from matplotlib.colors import BoundaryNorm, ListedColormap
 from torch import nn
+
+import wandb
 
 from .metrics_utils import (
     compute_batch_confusion_matrix,
@@ -305,7 +306,7 @@ def log_predictions_on_wandb(
     model,
     num_classes,
     device,
-    data_config,
+    config,
     logdir,
     ignore_index=0,
     training_metrics=None,
@@ -318,7 +319,7 @@ def log_predictions_on_wandb(
     from ..data.wrappers import get_full_image_dataloader
 
     logging.info("Computing model predictions on the dataset...")
-    img_size = data_config.get("patch_size", (128, 128))[0]
+    img_size = config["data"].get("patch_size", (128, 128))[0]
 
     model.eval()
 
@@ -326,7 +327,7 @@ def log_predictions_on_wandb(
         data_loader,
         nsamples_per_cols,
         nsamples_per_rows,
-    ) = get_full_image_dataloader(data_config, use_cuda=use_cuda)
+    ) = get_full_image_dataloader(config, use_cuda=use_cuda)
 
     (
         reconstructed_tensors,

@@ -13,8 +13,8 @@ from src.torchtmpl.data import get_dataloaders
 
 def count_labels(loader, num_classes):
     """
-    Pixel count per class, and how many patches hold a single class (a network 
-    computing embeddings for mixed labels patches will probably struggle to learn 
+    Pixel count per class, and how many patches hold a single class (a network
+    computing embeddings for mixed labels patches will probably struggle to learn
     relevant information).
     """
     counts = torch.zeros(num_classes, dtype=torch.long)

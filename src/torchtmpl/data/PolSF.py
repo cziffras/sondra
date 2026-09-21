@@ -1,7 +1,7 @@
 import logging
+import os
 import pathlib
-import random
-import os 
+
 import numpy as np
 import torch
 from PIL import Image
@@ -16,7 +16,7 @@ from ..utils import ToTensor
 class EnhancedPolSFDataset(ALOSDataset):
     """
     Hybrid Dataset that behaves as PolSFDataset yielding patches and labels
-    in supervised mode and conversely provides two augmented views with contrastive 
+    in supervised mode and conversely provides two augmented views with contrastive
     transformations.
     """
 
@@ -131,45 +131,63 @@ class PolSFDataManager:
 
     def __init__(self, config, use_cuda=False):
 
-        self.config = config
         self.use_cuda = use_cuda
+        self.contrastive = config["model"].get("contrastive", False)
+        self.config = config["data"]
 
         # POLSF_ROOT wins over the config
-        self.root_dir = os.environ.get("POLSF_ROOT", config["root_dir"])
-        self.batch_size = config["batch_size"]
-        self.num_workers = config["num_workers"]
-        self.valid_ratio = config["valid_ratio"]
-        self.patch_size = tuple(config.get("patch_size", (128, 128)))
-        self.patch_stride = tuple(config.get("patch_stride", self.patch_size))
+        self.root_dir = os.environ.get("POLSF_ROOT", self.config["root_dir"])
+        self.batch_size = self.config["batch_size"]
+        self.num_workers = self.config["num_workers"]
+        self.patch_size = tuple(self.config.get("patch_size", (128, 128)))
+        self.patch_stride = tuple(self.config.get("patch_stride", self.patch_size))
 
-    def get_dataloaders(self, contrastive=False):
+    def _loader(self, dataset, shuffle):
+        return torch.utils.data.DataLoader(
+            dataset,
+            shuffle=shuffle,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            pin_memory=self.use_cuda,
+        )
 
-        if contrastive:
-            dataset = self._create_contrastive_dataset()
-        else:
-            dataset = self._create_standard_dataset()
+    def get_dataloaders(self):
+        if self.contrastive:
+            return self._get_contrastive_dataloaders()
+        return self._get_supervised_dataloaders()
 
-        logging.info(f"Loaded {len(dataset)} samples")
+    def _get_contrastive_dataloaders(self):
+        """
+        Pre-training sees every patch of the unlabelled regions.
 
-        train_dataset, valid_dataset = self._split_dataset(dataset)
+        No split is held out: the checkpoint cannot be selected on a validation
+        NT-Xent anyway, since that loss also drops when a stage collapses. The
+        run is a fixed budget and the last epoch is what gets reused.
+        """
+        dataset = self._create_contrastive_dataset()
+        logging.info(f"Contrastive pre-training on {len(dataset)} patches")
 
-        loader_kwargs = {
-            "batch_size": self.batch_size,
-            "num_workers": self.num_workers,
-            "pin_memory": self.use_cuda,
-        }
+        # num_classes is a placeholder: the segmentation head is built either
+        # way and cannot be sized to zero, it just stays unused here
+        return self._loader(dataset, shuffle=True), None, None, tuple(dataset[0][0].shape), 1, []
 
-        train_loader = torch.utils.data.DataLoader(train_dataset, shuffle=True, **loader_kwargs)
-        valid_loader = torch.utils.data.DataLoader(valid_dataset, shuffle=False, **loader_kwargs)
+    def _get_supervised_dataloaders(self):
+        dataset = self._create_standard_dataset()
+        train, valid, test = self._mosaic_split(dataset)
 
-        # contrastive mode concatenates crops of the unlabelled regions, so there
-        # are no class names; num_classes stays at 1 because the segmentation head
-        # is built either way and cannot be sized to zero
-        classes = [] if contrastive else list(dataset.classes)
-        num_classes = 1 if contrastive else len(classes)
-        input_size = tuple(dataset[0][0].shape)
+        logging.info(
+            f"Mosaic split : {len(train)} train, {len(valid)} valid, {len(test)} test patches"
+        )
 
-        return train_loader, valid_loader, input_size, num_classes, classes
+        classes = list(dataset.classes)
+        return (
+            self._loader(train, shuffle=True),
+            self._loader(valid, shuffle=False),
+            self._loader(test, shuffle=False),
+            tuple(dataset[0][0].shape),
+            len(classes),
+            classes,
+        )
 
     def get_full_image_dataloader(self):
 
@@ -207,7 +225,7 @@ class PolSFDataManager:
             ((2832, 3520), (7888, 8080)),
         ]
 
-        transform = self._get_transform(contrastive=True)
+        transform = self._get_transform()
 
         transform_pipeline = v2.Compose([PolSARtoTensor(), transform, LogAmplitude()])
 
@@ -236,27 +254,40 @@ class PolSFDataManager:
             patch_stride=self.patch_stride,
         )
 
-    def _split_dataset(self, dataset):
-        """Splits a dataset in train and valid subsets"""
-        indices = list(range(len(dataset)))
-        random.shuffle(indices)
-        split = int(self.valid_ratio * len(dataset))
+    def _mosaic_split(self, dataset):
+        """
+        In prior version of this project, we were selecting patches at random, 
+        now the patch grid is splitted on a fixed lattice to ensure that :
+        - two test patches are never adjacent
+        - every interior test patch has the same neighbourhood; three train patches 
+        and one valid patch.
 
-        return (
-            torch.utils.data.Subset(dataset, indices[split:]),
-            torch.utils.data.Subset(dataset, indices[:split]),
-        )
+        A patch at row i, column j goes to `(i + 2 * j) % 5`, which sends a
+        fifth of the grid to test, a fifth to valid and the rest to train. 
 
-    def _get_transform(self, contrastive=False):
-        """Get transform from config (see transforms directory to see what options we got)"""
+        Being a lattice it needs no seed, and it keeps the class balance of the
+        scene: the three subsets stay within a third of a point of each other
+        on every class.
 
-        if contrastive:
-            transform_args = self.config.get("transform_contrastive", {})
-            transform_params = transform_args.get("params", {})
-            transform = SARContrastiveAugmentations(**transform_params)
-        else:
-            transform_args = self.config.get("transform_supervised", {})
-            transform_params = transform_args.get("params", {})
-            transform = lambda x: x  # noqa: E731
+        NOTE : 
 
-        return transform
+        It does not pretend to measure generalisation to an unseen area: each
+        test patch is surrounded by training data 64 pixels away. It fixes that
+        bias identically for everyone instead of removing it, so a difference in 
+        score between two configs cannot come from a lucky draw.
+        """
+        columns = dataset.nsamples_per_cols
+        buckets = {0: [], 1: [], 2: []}
+
+        for idx in range(len(dataset)):
+            row, column = divmod(idx, columns)
+            cell = (row + 2 * column) % 5
+            buckets[cell if cell < 2 else 2].append(idx)
+
+        return tuple(
+            torch.utils.data.Subset(dataset, buckets[cell]) for cell in (2, 1, 0)
+        )  # train, valid, test
+
+    def _get_transform(self):
+        params = self.config.get("transform_contrastive") or {}
+        return SARContrastiveAugmentations(**(params.get("params") or {}))

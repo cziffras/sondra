@@ -2,16 +2,10 @@ data:
   root_dir: "/media/emmanuel/T7_Data/SAN_FRANCISCO_ALOS2"
   dataset: polsf
   batch_size: 16
-  accumulation_steps: 4
   num_workers: 4
-  valid_ratio: 0.2
   patch_size: [64, 64]
-
-transform_contrastive:
-  params:
-
-transform_supervised:
-  params: # TODO
+  transform_contrastive:
+    params:
 
 nepochs: 12
 

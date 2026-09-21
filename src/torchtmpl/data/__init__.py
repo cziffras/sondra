@@ -7,12 +7,12 @@ _DATASETS = {
 }
 
 
-def get_dataloaders(data_config, use_cuda, contrastive=False):
-    """Build the train/valid dataloaders for the dataset named in the config."""
-    name = data_config["dataset"]
+def get_dataloaders(config, use_cuda):
+    """Build the dataloaders for the dataset named in the config."""
+    name = config["data"]["dataset"]
     try:
         builder = _DATASETS[name]
     except KeyError:
         raise ValueError(f"Unknown dataset '{name}'. Available: {sorted(_DATASETS)}") from None
 
-    return builder(data_config, use_cuda, contrastive=contrastive)
+    return builder(config, use_cuda)

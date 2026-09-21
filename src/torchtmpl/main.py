@@ -4,10 +4,11 @@ import pathlib
 import sys
 
 import torch
-import wandb
 import yaml
 from torch.utils.tensorboard import SummaryWriter
 from torchinfo import torchinfo
+
+import wandb
 
 from . import losses, models, optim
 from .data import get_dataloaders
@@ -33,12 +34,11 @@ def train(config, wandb_run, visualize):
     contrastive = config["model"].get("contrastive", False)
 
     logging.info("= Attempting a forward pass with given config")
-    check_model_params_validity(config, use_cuda, contrastive)
+    check_model_params_validity(config, use_cuda)
 
     logging.info("= Building the dataloaders")
-    data_config = config["data"]
 
-    data = get_dataloaders(data_config, use_cuda, contrastive)
+    data = get_dataloaders(config, use_cuda)
     train_loader, valid_loader = data.train, data.valid
     input_size, num_classes = data.input_size, data.num_classes
 
@@ -56,8 +56,8 @@ def train(config, wandb_run, visualize):
     if contrastive:
         loss = losses.get_loss(
             config["loss"]["name"],
-            num_stages=len(list(config["model"]["widths"])),
-            lambda_reg=config["model"].get("lambda_reg", 1.0),
+            num_stages=len(model_config.get("widths", [])),
+            lambda_reg=model_config.get("lambda_reg", 1.0),
         ).to(device)
     else:
         loss = losses.get_loss(config["loss"]["name"], ignore_index=0)
@@ -97,8 +97,8 @@ def train(config, wandb_run, visualize):
             + "## Loss\n\n"
             + f"{loss}\n\n"
             + "## Datasets : \n"
-            + f"Train : {train_loader.dataset}\n"
-            + f"Validation : {valid_loader.dataset}"
+            + f"Train : {len(train_loader.dataset)} patches\n"
+            + f"Validation : {len(valid_loader.dataset) if valid_loader else 'none (pre-training)'}"
         )
         with open(logdir / "summary.txt", "w", encoding="utf-8") as f:
             f.write(summary_text)
@@ -147,15 +147,12 @@ def train(config, wandb_run, visualize):
             )
 
         train_loss = train_metrics["train_loss"]
+        metrics = {"train_loss": train_loss}
 
         if contrastive:
-            valid_metrics = valid_func(
-                model=model,
-                loader=valid_loader,
-                f_loss=loss,
-                device=device,
-                lambda_reg=config["model"].get("lambda_reg", 1),
-            )
+            # pre-training holds nothing out, so the checkpoint follows the
+            # training loss and the run is really a fixed budget
+            selection_score = train_loss
         else:
             valid_metrics = valid_func(
                 model=model,
@@ -164,66 +161,33 @@ def train(config, wandb_run, visualize):
                 device=device,
                 number_classes=num_classes,
             )
-
-        valid_loss = valid_metrics["valid_loss"]
-
-        metrics = {
-            "train_loss": train_loss,
-            "valid_loss": valid_loss,
-        }
-
-        if not contrastive:
+            selection_score = valid_metrics["valid_loss"]
+            metrics["valid_loss"] = selection_score
             metrics["valid_overall_accuracy"] = valid_metrics["valid_overall_accuracy"]
+            metrics["valid_mean_iou"] = valid_metrics["valid_mean_iou"]
 
-        log_vars_dict = {}
-        beta_dict = {}
-        weights_dict = {}
-
-        if contrastive:
-            if hasattr(loss, "log_vars"):
-                lv = loss.weights.cpu()
-                log_vars_dict = {f"log_vars/stage_{i}": lv[i].item() for i in range(len(lv))}
-                for k, v in log_vars_dict.items():
-                    tensorboard_writer.add_scalar(k, v, e)
-
-            if hasattr(loss, "log_beta"):
-                bw = loss.weights.cpu()
-                beta_dict = {f"beta_weights/stage_{i}": bw[i].item() for i in range(len(bw))}
-                for k, v in beta_dict.items():
-                    tensorboard_writer.add_scalar(k, v, e)
-
-            if hasattr(loss, "logits"):
-                ws = loss.weights.cpu()
-                weights_dict = {f"weights/stage_{i}": ws[i].item() for i in range(len(ws))}
-                for k, v in weights_dict.items():
-                    tensorboard_writer.add_scalar(k, v, e)
-
-        all_logs = {**metrics, **log_vars_dict, **beta_dict, **weights_dict}
-        wandb_run.log(all_logs, step=e)
-
-        if not contrastive:
-            valid_accuracy = valid_metrics.get("valid_overall_accuracy", None)
-            accuracy_msg = (
-                f", Accuracy : {valid_accuracy:.3f}% " if valid_accuracy is not None else ""
-            )
-        else:
-            accuracy_msg = ""
-
-        updated = model_checkpoint.update(score=valid_loss, epoch=e)
-        logging.info(
-            "[%d/%d] Train loss: %.3f, Validation loss: %.3f %s%s",
-            e,
-            config["nepochs"],
-            train_loss,
-            valid_loss,
-            accuracy_msg,
-            "[>> BETTER <<]" if updated else "",
-        )
+        # every hierarchical loss exposes the same `weights` property: we
+        # watch no stage is collapsing
+        if hasattr(loss, "weights"):
+            stage_weights = loss.weights.cpu()
+            metrics |= {f"stage_weights/{i}": w.item() for i, w in enumerate(stage_weights)}
 
         for key, value in metrics.items():
             tensorboard_writer.add_scalar(key, value, e)
+        wandb_run.log(metrics, step=e)
 
-        if config["model"].get("scheduler", None) == "CosineAnnealingLR":
+        updated = model_checkpoint.update(score=selection_score, epoch=e)
+        logging.info(
+            "[%d/%d] train %.3f, %s %.3f%s",
+            e,
+            config["nepochs"],
+            train_loss,
+            "selection" if contrastive else "valid",
+            selection_score,
+            " [>> BETTER <<]" if updated else "",
+        )
+
+        if scheduler is not None and config["scheduler"]["name"] == "CosineAnnealingLR":
             scheduler.step()
 
     if contrastive:
@@ -232,17 +196,16 @@ def train(config, wandb_run, visualize):
         )
 
     else:
-        logging.info(
-            "###################### Final evaluation on valid loader ######################"
-        )
+        logging.info("###################### Final evaluation on test ######################")
 
         model, _, score = model_checkpoint.load_best_checkpoint()
 
-        logging.info(f"Loaded best model with training loss : {score:.3f}")
+        logging.info(f"Loaded best model, validation loss : {score:.3f}")
 
+        # the test split never took part in selecting this checkpoint
         test_metrics, _, test_cm = training_utils.test_epoch(
             model=model,
-            loader=valid_loader,
+            loader=data.test,
             device=device,
             number_classes=num_classes,
             ignore_index=0,
@@ -289,14 +252,12 @@ def train(config, wandb_run, visualize):
                 model,
                 num_classes,
                 device,
-                data_config,
+                config,
                 logdir,
                 ignore_index=0,
                 training_metrics=metrics,
                 use_cuda=use_cuda,
             )
-        else:
-            wandb_run.log(metrics)
 
         logging.info("###################### End of training ######################")
 
@@ -310,7 +271,7 @@ def main():
     logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
 
     if len(sys.argv) != 4:
-        logging.error(f"Usage: {sys.argv[0]} config.yaml <train|test>")
+        logging.error(f"Usage: {sys.argv[0]} config.yaml <train|test> <visualize|novis>")
         sys.exit(-1)
 
     config_file = sys.argv[1]
@@ -322,22 +283,24 @@ def main():
         with open(config_file, "r") as f:
             config = yaml.safe_load(f)
     except Exception as e:
-        logging.error(f"Erreur lors du chargement du fichier de config: {e}")
+        logging.error(f"Failed to load config file: {e}")
         sys.exit(-1)
 
-    if config.get("contrastive", False):
+    model_config = config["model"]
+    if model_config.get("contrastive", False):
         run_type = "ContrastivePretraining"
-    elif "pretrained_weights" in config.get("model", {}):
+    elif "pretrained_weights" in model_config:
         run_type = "SegmentationFromPretrained"
     else:
-        run_type = "SegmentationBaseline(NoContrastive)"
+        run_type = "SegmentationBaseline"
 
+    wandb_config = config.get("wandb", {})
     wandb_run = wandb.init(
-        project="segmentation-polsf",
-        entity="SONDRA_2024-2025",
+        project=wandb_config.get("project", "segmentation-polsf"),
+        entity=wandb_config.get("entity"),
         config=config,
-        name=run_type + "_" + models.__name__,
-        tags=[run_type],
+        name=f"{run_type}_{model_config['class']}",
+        tags=[run_type, model_config["class"]],
     )
 
     if command == "train":

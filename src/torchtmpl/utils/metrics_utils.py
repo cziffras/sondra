@@ -25,7 +25,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
-import wandb
 from sklearn.metrics import (
     accuracy_score,
     balanced_accuracy_score,
@@ -33,6 +32,8 @@ from sklearn.metrics import (
     confusion_matrix,
     jaccard_score,
 )
+
+import wandb
 
 
 def log_confusion_matrix(wandb_run, cm, title="Confusion Matrix", xlabel="Preds", ylabel="Labels"):

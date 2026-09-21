@@ -1,11 +1,9 @@
-def check_model_params_validity(config, use_cuda, contrastive):
+def check_model_params_validity(config, use_cuda):
 
     from ..data import get_dataloaders
     from ..models import build_model
 
-    data_config = config["data"]
-
-    data = get_dataloaders(data_config, use_cuda, contrastive)
+    data = get_dataloaders(config, use_cuda)
 
     first_batch_inputs, _ = next(iter(data.train))
 

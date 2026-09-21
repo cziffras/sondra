@@ -1,3 +1,5 @@
+import inspect
+
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -220,19 +222,32 @@ class FocalLoss(nn.Module):
 
         return loss.mean()
 
+# ------------------------------- LOSS GETTERS -------------------------------
+
+_LOSSES = {
+    "NTXentLoss": NTXentLoss,
+    "NTXentKendall": NTXentKendall,
+    "NTXentKLUnif": NTXentKLUnif,
+    "NTXentLearnableTemp": NTXentLearnableTemp,
+    "FocalLoss": FocalLoss,
+}
+
+# these weigh one NT-Xent per encoder stage, so they need a multi-stage backbone
+HIERARCHICAL = ("NTXentKendall", "NTXentKLUnif", "NTXentLearnableTemp")
+
 
 def get_loss(lossname, **kwargs):
-    if lossname == "NTXentLoss":
-        return NTXentLoss(**kwargs)
-    if lossname == "NTXentKendall":
-        return NTXentKendall(**kwargs)
-    if lossname == "NTXentKLUnif":
-        return NTXentKLUnif(**kwargs)
-    if lossname == "NTXentLearnableTemp":
-        return NTXentLearnableTemp(**kwargs)
-    if lossname == "FocalLoss":
-        return FocalLoss(**kwargs)
-    try:
-        return getattr(nn, lossname)(**kwargs)
-    except AttributeError:
-        raise ValueError(f"Loss '{lossname}' unknown in torch.nn.")
+    loss_class = _LOSSES.get(lossname) or getattr(nn, lossname, None)
+    if loss_class is None:
+        raise ValueError(f"Loss '{lossname}' is neither defined here nor in torch.nn")
+
+    if lossname in HIERARCHICAL and not kwargs.get("num_stages"):
+        raise ValueError(
+            f"'{lossname}' weighs one loss per encoder stage and needs num_stages. "
+            "The UNet contrastive head returns a single embedding: use NTXentLoss."
+        ) # UNet could be itself adapted to return stacked embeddings, should be done
+    # to measure architecture gain between SegFormer and UNet and the overall postitive
+    # effect of per-stage contrastive loss
+
+    accepted = inspect.signature(loss_class).parameters
+    return loss_class(**{k: v for k, v in kwargs.items() if k in accepted})
