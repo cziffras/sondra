@@ -19,7 +19,7 @@ class Dataloaders(NamedTuple):
     classes: list[str]
 
 
-def get_polsf_dataloaders(config, use_cuda):
+def get_polsf_dataloaders(config, use_cuda) -> Dataloaders:
     manager = PolSFDataManager(config, use_cuda=use_cuda)
     return Dataloaders(*manager.get_dataloaders())
 

@@ -32,13 +32,15 @@ def count_labels(loader, num_classes):
 
 def main(config_path):
     config = yaml.safe_load(Path(config_path).read_text())
-    data = get_dataloaders(config["data"], use_cuda=False, contrastive=False)
+    data = get_dataloaders(config, use_cuda=False)
 
     counts, single_class, patches = count_labels(data.train, data.num_classes)
     share = (100 * counts / counts.sum()).tolist()
 
+    assert hasattr(data, "valid"), "get_dataloaders returned an instance without `valid` attribute"
+    
     lines = [
-        f"train {len(data.train.dataset)} patches, valid {len(data.valid.dataset)}",
+        f"train {len(data.train.dataset)} patches, valid {len(data.valid.dataset)}", # type: ignore
         f"input {data.input_size}, {counts.sum().item()} pixels read",
         "",
         *(f"{name} : {percent:.2f}%" for name, percent in zip(data.classes, share)),

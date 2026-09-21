@@ -190,9 +190,9 @@ class FourierAugment:
 
 class SpeckleAugment:
     """
-    TOFIX = multiplicative
+    Applies realistic speckle noise typical of SAR images as multiplicative 
+    noise.
 
-    Applies realistic speckle noise typical of SAR images.
     See : https://core.ac.uk/download/pdf/17332528.pdf p.4-5
 
     Args:
@@ -231,76 +231,6 @@ class SpeckleAugment:
 
         return torch.complex(new_real, new_imag)
 
-
-class PhaseAugment:
-    """
-    Modifies the phase component of SAR data while preserving magnitude.
-
-    Args:
-        max_shift (float): Maximum phase shift in radians.
-        spatial_freq (int): Spatial frequency of phase variations.
-        apply_pattern (bool): Whether to apply structured phase patterns.
-    """
-
-    def __init__(self, max_shift=0.3, spatial_freq=5, apply_pattern=True):
-        self.max_shift = max_shift
-        self.spatial_freq = spatial_freq
-        self.apply_pattern = apply_pattern
-
-    def __call__(self, img):
-        img = to_complex_tensor(img)
-        C, H, W = img.shape
-
-        magnitude = torch.abs(img)
-        phase = torch.angle(img)
-
-        if self.apply_pattern:
-            y, x = torch.meshgrid(
-                torch.arange(H, device=img.device) / H,
-                torch.arange(W, device=img.device) / W,
-                indexing="ij",
-            )
-
-            pattern_type = random.choice(["waves", "circular", "random"])
-
-            if pattern_type == "waves":
-                freq = random.uniform(1, self.spatial_freq)
-                direction = random.uniform(0, 2 * np.pi)
-                direction_cos = torch.tensor(np.cos(direction), device=img.device)
-                direction_sin = torch.tensor(np.sin(direction), device=img.device)
-                phase_pattern = self.max_shift * torch.sin(
-                    2 * np.pi * freq * (x * direction_cos + y * direction_sin)
-                )
-
-            elif pattern_type == "circular":
-                center_y = random.uniform(0, 1)
-                center_x = random.uniform(0, 1)
-                dist = torch.sqrt((y - center_y) ** 2 + (x - center_x) ** 2)
-                phase_pattern = self.max_shift * torch.sin(2 * np.pi * self.spatial_freq * dist)
-
-            else:
-                phase_pattern = torch.randn(H, W, device=img.device) * self.max_shift
-                kernel_size = max(3, int(min(H, W) / 20))
-                if kernel_size % 2 == 0:
-                    kernel_size += 1
-                phase_pattern = F.avg_pool2d(
-                    phase_pattern.unsqueeze(0),
-                    kernel_size=kernel_size,
-                    stride=1,
-                    padding=kernel_size // 2,
-                ).squeeze(0)
-
-            new_phase = phase + phase_pattern.unsqueeze(0)
-
-        else:
-            # Simple random phase shift (please avoid to use it)
-            phase_shift = torch.randn(C, 1, 1, device=img.device) * self.max_shift
-            new_phase = phase + phase_shift
-
-        new_real = magnitude * torch.cos(new_phase)
-        new_imag = magnitude * torch.sin(new_phase)
-
-        return torch.complex(new_real, new_imag)
 
 
 class RotateFlip:
@@ -431,7 +361,7 @@ class SARContrastiveAugmentations:
         num_holes=(1, 2),
         intensity_factor=0.05,
         speckle_options=(0.2, "gamma"),
-        phase_shift=0.3,
+        phase_shift=0, # See NOTE in PhaseAugment docstring
         elastic_options=(5.0, 3.0),
         fourier_options=(0.1, True),
         use_elastic=True,
@@ -443,7 +373,6 @@ class SARContrastiveAugmentations:
         self.speckle_aug = SpeckleAugment(
             intensity=speckle_options[0], distribution=speckle_options[1]
         )
-        self.phase_aug = PhaseAugment(max_shift=phase_shift)
         self.fourier_aug = FourierAugment(
             mask_prob=fourier_options[0], preserve_center=fourier_options[1]
         )
