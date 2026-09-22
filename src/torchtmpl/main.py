@@ -99,7 +99,7 @@ def train(config, wandb_run, visualize):
     verbose = config.get("verbose", True)
 
     if verbose:
-        input_size = next(iter(train_loader))[0].shape
+        batch_shape = next(iter(train_loader))[0].shape
         summary_text = (
             f"Logdir : {logdir}\n"
             + "## Command \n"
@@ -107,7 +107,7 @@ def train(config, wandb_run, visualize):
             + "\n\n"
             + f" Config : {config} \n\n"
             + "## Summary of the model architecture\n"
-            + f"{torchinfo.summary(model, input_size=input_size, dtypes=[torch.complex64] if bool(config['model'].get('is_complex', False)) else None)}\n\n"
+            + f"{torchinfo.summary(model, input_size=batch_shape, dtypes=[torch.complex64] if bool(config['model'].get('is_complex', False)) else None)}\n\n"
             + "## Loss\n\n"
             + f"{loss}\n\n"
             + "## Datasets : \n"
@@ -129,12 +129,6 @@ def train(config, wandb_run, visualize):
         if contrastive
         else training_utils.train_one_epoch
     )
-    valid_func = (
-        training_contrastive_utils.valid_contrastive_epoch
-        if contrastive
-        else training_utils.valid_epoch
-    )
-
     for e in range(config["nepochs"]):
         if contrastive:
             train_metrics = train_epoch_func(
@@ -145,7 +139,6 @@ def train(config, wandb_run, visualize):
                 scheduler=scheduler,
                 device=device,
                 epoch=e,
-                lambda_reg=config["model"].get("lambda_reg", 1),
             )
 
         else:
@@ -168,7 +161,7 @@ def train(config, wandb_run, visualize):
             # training loss and the run is really a fixed budget
             selection_score = train_loss
         else:
-            valid_metrics = valid_func(
+            valid_metrics = training_utils.valid_epoch(
                 model=model,
                 loader=valid_loader,
                 f_loss=loss,

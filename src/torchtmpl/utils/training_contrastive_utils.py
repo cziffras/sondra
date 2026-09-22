@@ -12,7 +12,6 @@ def train_one_contrastive_epoch(
     scheduler,
     device: torch.device,
     max_norm: float = 2.5,
-    lambda_reg: float = 1,
     epoch: int = 0,
 ) -> dict:
     model.train()
@@ -34,9 +33,6 @@ def train_one_contrastive_epoch(
 
         zs1 = model(x1)
         zs2 = model(x2)
-
-        if hasattr(f_loss, "lambda_reg"):
-            f_loss.lamda_reg = float(lambda_reg)
 
         loss = f_loss(zs1, zs2)
 
@@ -86,32 +82,3 @@ def train_one_contrastive_epoch(
     }
 
     return metrics
-
-
-@torch.no_grad()
-def valid_contrastive_epoch(
-    model: nn.Module,
-    loader: torch.utils.data.DataLoader,
-    f_loss: nn.Module,
-    device: torch.device,
-    lambda_reg: float = 1,
-) -> dict:
-
-    model.eval()
-    f_loss.eval()
-
-    if hasattr(f_loss, "lambda_reg"):
-        f_loss.lamda_reg = float(lambda_reg)
-
-    total_loss = num_samples = 0
-
-    for x1, x2 in tqdm.tqdm(loader, desc="Valid"):
-        x1, x2 = x1.to(device), x2.to(device)
-        zs1, zs2 = model(x1), model(x2)
-        loss = f_loss(zs1, zs2)
-
-        bsz = x1.size(0)
-        total_loss += loss.item() * bsz
-        num_samples += bsz
-
-    return {"valid_loss": total_loss / num_samples}

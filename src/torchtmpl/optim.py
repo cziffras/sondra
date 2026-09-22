@@ -6,7 +6,12 @@ import torch
 def get_optimizer(cfg, params):
     raw_params = cfg["optimizer"].get("params", {})
 
-    params_dict = {k: float(v) for k, v in raw_params.items() if not isinstance(v, list)}
+    # a list means a tuple argument such as AdamW's betas; dropping it, as a
+    # plain float() filter did, silently ignored what the config asked for
+    params_dict = {
+        k: tuple(float(x) for x in v) if isinstance(v, list) else float(v)
+        for k, v in raw_params.items()
+    }
 
     try:
         optim_class = getattr(torch.optim, cfg["optimizer"]["name"])

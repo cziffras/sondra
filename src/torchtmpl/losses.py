@@ -62,7 +62,7 @@ class NTXentKLUnif(nn.Module):
         super().__init__()
         self.nt_xent = NTXentLoss(temperature, eps)
         self.logits = nn.Parameter(torch.zeros(num_stages), requires_grad=True)  # logits w_i
-        self.lambda_kl = lambda_reg
+        self.lambda_reg = lambda_reg
         self.N = num_stages
 
     def forward(self, zs1: list[torch.Tensor], zs2: list[torch.Tensor]) -> torch.Tensor:
@@ -75,7 +75,7 @@ class NTXentKLUnif(nn.Module):
 
         kl = torch.sum(w * torch.log(w * self.N + 1e-12))  # KL(w || U)
 
-        return torch.sum(w * losses) + self.lambda_kl * kl
+        return torch.sum(w * losses) + self.lambda_reg * kl
 
     @property
     def weights(self) -> torch.Tensor:
@@ -222,6 +222,7 @@ class FocalLoss(nn.Module):
 
         return loss.mean()
 
+
 # ------------------------------- LOSS GETTERS -------------------------------
 
 _LOSSES = {
@@ -245,7 +246,8 @@ def get_loss(lossname, **kwargs):
         raise ValueError(
             f"'{lossname}' weighs one loss per encoder stage and needs num_stages. "
             "The UNet contrastive head returns a single embedding: use NTXentLoss."
-        ) # UNet could be itself adapted to return stacked embeddings, should be done
+        )  
+    # FIXME : UNet could be itself adapted to return stacked embeddings, should be done
     # to measure architecture gain between SegFormer and UNet and the overall postitive
     # effect of per-stage contrastive loss
 

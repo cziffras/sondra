@@ -20,4 +20,7 @@ def check_model_params_validity(config, use_cuda):
 
 
 def count_parameters(model):
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+    # `numel()` counts a complex tensor as one entry per element
+    return sum(
+        p.numel() * (2 if p.is_complex() else 1) for p in model.parameters() if p.requires_grad
+    )
