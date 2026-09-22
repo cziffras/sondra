@@ -1,15 +1,29 @@
+from typing import NamedTuple
+
+import torch
+
 from .PolSF import PolSFDataManager
 
-def get_polsf_dataloaders(data_config, use_cuda, contrastive=False):
-    """
-    Wrapper to call and instanciate get_dataloaders from PolSFDataManager
-    """
-    manager = PolSFDataManager(config=data_config, use_cuda=use_cuda, debug=data_config.get("debug", False))
-    return manager.get_dataloaders(contrastive=contrastive)
 
-def get_full_image_dataloader(data_config, use_cuda, contrastive=False):
+class Dataloaders(NamedTuple):
     """
-    Wrapper to call and instanciate PolSFDataManager
+    `valid` and `test` are None in contrastive mode, which pre-trains on every
+    patch and holds nothing out. `classes` is empty there for the same reason.
     """
-    manager = PolSFDataManager(config=data_config, use_cuda=use_cuda, debug=data_config.get("debug", False))
+
+    train: torch.utils.data.DataLoader
+    valid: torch.utils.data.DataLoader | None
+    test: torch.utils.data.DataLoader | None
+    input_size: tuple[int, ...]
+    num_classes: int
+    classes: list[str]
+
+
+def get_polsf_dataloaders(config, use_cuda) -> Dataloaders:
+    manager = PolSFDataManager(config, use_cuda=use_cuda)
+    return Dataloaders(*manager.get_dataloaders())
+
+
+def get_full_image_dataloader(config, use_cuda):
+    manager = PolSFDataManager(config, use_cuda=use_cuda)
     return manager.get_full_image_dataloader()

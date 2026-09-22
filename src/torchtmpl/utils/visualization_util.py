@@ -1,21 +1,21 @@
-# From torchcvnn/examples/polsf_unet
+import logging
 
-
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from matplotlib.colors import ListedColormap, BoundaryNorm
 import matplotlib.patches as mpatches
-import wandb
-from torch.autograd import Variable
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
 import torch
-import torch.nn as nn
 import tqdm
+from matplotlib.colors import BoundaryNorm, ListedColormap
+from torch import nn
+
+import wandb
+
 from .metrics_utils import (
     compute_batch_confusion_matrix,
+    empty_confusion_matrix,
     normalize_confusion_matrix,
 )
-import logging
 
 
 def plot_segmentation_images(
@@ -45,7 +45,6 @@ def plot_segmentation_images(
                                            - 2: Validation
                                            - 3: Test
     """
-    # Define colormap for segmentation classes
     class_colors = {
         7: {
             0: "black",
@@ -73,11 +72,10 @@ def plot_segmentation_images(
         for i in sorted(class_colors.keys())
     ]
 
-    # Define colormap for sets masks
     sets_mask_colors = {
-        1: "red",  # Train
-        2: "green",  # Validation
-        3: "blue",  # Test
+        1: "red",
+        2: "green",
+        3: "blue",
     }
     sets_mask_cmap = ListedColormap(
         [sets_mask_colors[key] for key in sorted(sets_mask_colors.keys())]
@@ -89,10 +87,9 @@ def plot_segmentation_images(
         for i in sorted(sets_mask_colors.keys())
     ]
 
-    # Limit number of samples to visualize
     num_samples = to_be_vizualized[0].shape[0]
-    nrows = num_samples + 1  # +1 for confusion matrix
-    ncols = 4 if sets_masks is not None else 3  # Add test mask column if available
+    nrows = num_samples + 1
+    ncols = 4 if sets_masks is not None else 3
 
     fig, axes = plt.subplots(
         nrows=nrows,
@@ -101,86 +98,67 @@ def plot_segmentation_images(
         constrained_layout=True,
     )
 
-    # Plot ground truth, predictions, masked predictions, and optionally test masks
     for i in range(num_samples):
         img = to_be_vizualized[0][i]
         g_t = to_be_vizualized[1][i]
         pred = to_be_vizualized[2][i]
 
-        # Mask prediction if ignore_index is provided
         if ignore_index is not None:
             masked_pred = pred.copy()
             masked_pred[g_t == ignore_index] = ignore_index
         else:
             masked_pred = pred
 
-        # Plot ground truth
         g_t = np.squeeze(g_t)
         axes[i][0].imshow(g_t, cmap=cmap, norm=norm, origin="lower")
-        axes[i][0].set_title(f"Ground Truth {i+1}")
+        axes[i][0].set_title(f"Ground Truth {i + 1}")
         axes[i][0].axis("off")
 
-        # Plot prediction
         pred = np.squeeze(pred)
         axes[i][1].imshow(pred, cmap=cmap, norm=norm, origin="lower")
-        axes[i][1].set_title(f"Prediction {i+1}")
+        axes[i][1].set_title(f"Prediction {i + 1}")
         axes[i][1].axis("off")
 
-        # Plot masked prediction
         masked_pred = np.squeeze(masked_pred)
         axes[i][2].imshow(masked_pred, cmap=cmap, norm=norm, origin="lower")
-        axes[i][2].set_title(f"Masked Prediction {i+1}")
+        axes[i][2].set_title(f"Masked Prediction {i + 1}")
         axes[i][2].axis("off")
 
-        # Plot test mask if available
         if sets_masks is not None:
             axes[i][3].imshow(sets_masks[i], cmap=sets_mask_cmap, norm=sets_mask_norm)
-            axes[i][3].set_title(f"Sets Mask {i+1}")
+            axes[i][3].set_title(f"Sets Mask {i + 1}")
             axes[i][3].axis("off")
 
-    # Plot confusion matrix in the last row
     sns.heatmap(
         confusion_matrix.round(decimals=3),
         annot=True,
         fmt=".2g",
         cmap="Blues",
         ax=axes[-1][0],
-        xticklabels=np.setdiff1d(
-            np.arange(0, number_classes), np.array([ignore_index])
-        ),
-        yticklabels=np.setdiff1d(
-            np.arange(0, number_classes), np.array([ignore_index])
-        ),
+        xticklabels=np.setdiff1d(np.arange(0, number_classes), np.array([ignore_index])),
+        yticklabels=np.setdiff1d(np.arange(0, number_classes), np.array([ignore_index])),
     )
     axes[-1][0].set_xlabel("Predicted Class")
     axes[-1][0].set_ylabel("Ground Truth Class")
     axes[-1][0].set_title("Confusion Matrix")
 
-    # Add legends
     legend_ax = axes[-1][1]
     legend_ax.axis("off")
     legend_ax.legend(handles=patches, loc="center", title="Classes")
 
-    # Add sets mask legend if applicable
     if sets_masks is not None:
         test_mask_legend_ax = axes[-1][2]
         test_mask_legend_ax.axis("off")
-        test_mask_legend_ax.legend(
-            handles=sets_mask_patches, loc="center", title="Test Masks"
-        )
+        test_mask_legend_ax.legend(handles=sets_mask_patches, loc="center", title="Test Masks")
     else:
         axes[-1][2].axis("off")
 
-    # Leave extra columns blank for symmetry
     if ncols == 4:
         axes[-1][3].axis("off")
 
-    # Save the figure
     path = f"{logdir}/segmentation_images.png"
     plt.savefig(path, bbox_inches="tight", pad_inches=0.1)
     plt.close()
-
-    # Log to Weights & Biases if enabled
 
     logs = {
         "segmentation_images": [
@@ -219,20 +197,15 @@ def reassemble_image(
         reassembled_image: The reconstructed image tensor.
         mask: A mask indicating the set each segment belongs to (if sets_indices is provided).
     """
-    # Calculate total image dimensions
     img_height = samples_per_row * segment_size
     img_width = samples_per_col * segment_size
 
-    # Initialize the empty image tensor with the correct shape
-    reassembled_image = np.zeros(
-        (num_channels, img_height, img_width), dtype=segments[0].dtype
-    )
+    reassembled_image = np.zeros((num_channels, img_height, img_width), dtype=segments[0].dtype)
     if sets_indices is None:
         mask = None
     else:
         mask = np.zeros_like(reassembled_image, dtype=np.uint8)
 
-    # Map real_indices to their positions
     index_to_position = {
         real_index: (row, col)
         for row in range(samples_per_row)
@@ -240,25 +213,19 @@ def reassemble_image(
         for real_index in [row * samples_per_col + col]
     }
 
-    # Place each segment into the correct position
     for segment_index, real_index in enumerate(real_indices):
         if real_index not in index_to_position:
-            raise ValueError(
-                f"Real index {real_index} is out of bounds for the image grid."
-            )
+            raise ValueError(f"Real index {real_index} is out of bounds for the image grid.")
 
-        # Get the target row and column
         row, col = index_to_position[real_index]
         h_start = row * segment_size
         w_start = col * segment_size
 
-        # Insert the segment into the image
-        reassembled_image[
-            :, h_start : h_start + segment_size, w_start : w_start + segment_size
-        ] = segments[segment_index]
+        reassembled_image[:, h_start : h_start + segment_size, w_start : w_start + segment_size] = (
+            segments[segment_index]
+        )
 
-        # Update the mask if sets_indices is provided
-        if mask is not None:
+        if sets_indices is not None and mask is not None:
             if real_index in sets_indices[0]:
                 mask[
                     :,
@@ -290,45 +257,39 @@ def one_forward_with_conf_mat(model, loader, device, number_classes, ignore_inde
 
     list_of_indices = []
 
-    size = np.setdiff1d(np.arange(0, number_classes), np.array([ignore_index]))
-    conf_matrix_accum = np.zeros((len(size), len(size)))
+    evaluated_classes, conf_matrix_accum = empty_confusion_matrix(number_classes, ignore_index)
 
     with torch.no_grad():
         for _, data in enumerate(tqdm.tqdm(loader)):
-
-            # Handle different data structures (tuple, list, or otherwise)
             if isinstance(data, (tuple, list)):
                 if len(data) == 2:
-                    inputs, labels = data  # For standard datasets
+                    inputs, labels = data
                 elif len(data) == 3:
-                    inputs, labels, idx = data  # For wrapped datasets
+                    inputs, labels, idx = data
                     list_of_indices.extend(idx.cpu().numpy().tolist())
                 else:
                     raise ValueError("Unexpected data format in loader.")
             else:
-                inputs = data
-                labels = None
-            # Need to adapt the wrapper and the collect of the indices for reconstruction datasets
+                raise ValueError(
+                    "This loader yields inputs without labels, but a confusion matrix "
+                    "is computed here: use a loader returning (inputs, labels)."
+                )
 
-            inputs = Variable(inputs).to(device)
+            inputs = inputs.to(device)
 
-            # Forward propagate through the model
             pred_outputs = model(inputs)
 
             pred_outputs = (
-                softmax(torch.abs(pred_outputs).type(torch.float64))
-                .argmax(dim=1)
-                .cpu()
-                .numpy()
+                softmax(torch.abs(pred_outputs).type(torch.float64)).argmax(dim=1).cpu().numpy()
             )
             outputs.extend(pred_outputs)
 
             labels_flat = labels.cpu().numpy().flatten()
             batch_cm = compute_batch_confusion_matrix(
                 predictions=pred_outputs.flatten(),
-                labels=labels_flat,
+                targets=labels_flat,
+                classes=evaluated_classes,
                 ignore_index=ignore_index,
-                size=size,
             )
 
             conf_matrix_accum += batch_cm
@@ -345,7 +306,7 @@ def log_predictions_on_wandb(
     model,
     num_classes,
     device,
-    data_config,
+    config,
     logdir,
     ignore_index=0,
     training_metrics=None,
@@ -358,7 +319,7 @@ def log_predictions_on_wandb(
     from ..data.wrappers import get_full_image_dataloader
 
     logging.info("Computing model predictions on the dataset...")
-    img_size = data_config.get("patch_size", (128, 128))[0]
+    img_size = config["data"].get("patch_size", (128, 128))[0]
 
     model.eval()
 
@@ -366,7 +327,7 @@ def log_predictions_on_wandb(
         data_loader,
         nsamples_per_cols,
         nsamples_per_rows,
-    ) = get_full_image_dataloader(data_config, use_cuda=use_cuda) # 
+    ) = get_full_image_dataloader(config, use_cuda=use_cuda)
 
     (
         reconstructed_tensors,
@@ -394,9 +355,7 @@ def log_predictions_on_wandb(
         samples_per_col=nsamples_per_cols,
         samples_per_row=nsamples_per_rows,
         num_channels=(
-            ground_truth_tensors[0].shape[0]
-            if len(ground_truth_tensors[0].shape) > 2
-            else 1
+            ground_truth_tensors[0].shape[0] if len(ground_truth_tensors[0].shape) > 2 else 1
         ),
         segment_size=img_size,
         real_indices=indice_tensors,
@@ -406,9 +365,7 @@ def log_predictions_on_wandb(
         segments=image_tensors,
         samples_per_col=nsamples_per_cols,
         samples_per_row=nsamples_per_rows,
-        num_channels=(
-            image_tensors[0].shape[0] if len(image_tensors[0].shape) > 2 else 1
-        ),
+        num_channels=(image_tensors[0].shape[0] if len(image_tensors[0].shape) > 2 else 1),
         segment_size=img_size,
         real_indices=indice_tensors,
         sets_indices=None,
@@ -419,9 +376,7 @@ def log_predictions_on_wandb(
         samples_per_col=nsamples_per_cols,
         samples_per_row=nsamples_per_rows,
         num_channels=(
-            reconstructed_tensors[0].shape[0]
-            if len(reconstructed_tensors[0].shape) > 2
-            else 1
+            reconstructed_tensors[0].shape[0] if len(reconstructed_tensors[0].shape) > 2 else 1
         ),
         segment_size=img_size,
         real_indices=list_of_indices,

@@ -1,34 +1,26 @@
-import math
-import itertools
-import torch
-import yaml
-
-def check_model_params_validity(config, use_cuda, contrastive): 
+def check_model_params_validity(config, use_cuda):
 
     from ..data import get_dataloaders
     from ..models import build_model
 
-    data_config = config["data"]
+    data = get_dataloaders(config, use_cuda)
 
-    loader, _, input_size, num_classes = get_dataloaders(
-        data_config, use_cuda, contrastive
-    )
+    first_batch_inputs, _ = next(iter(data.train))
 
-    first_batch_inputs, _ = next(iter(loader))
-
-    model = build_model(
-        config["model"],
-        input_size,
-        num_classes
-    )
+    model = build_model(config["model"], data.input_size, data.num_classes)
 
     try:
         _ = model(first_batch_inputs)
-    except Exception as err: 
-        raise ValueError(f"Invalid forward : check model's config. For more details : {err}") from err
-    
+    except Exception as err:
+        raise ValueError(
+            f"Invalid forward : check model's config. For more details : {err}"
+        ) from err
+
     print("############## Config is correct ##############")
 
 
-def count_parameters(model): 
-    return sum(p.numel() for p in model.parameters() if p.requires_grad) 
+def count_parameters(model):
+    # `numel()` counts a complex tensor as one entry per element
+    return sum(
+        p.numel() * (2 if p.is_complex() else 1) for p in model.parameters() if p.requires_grad
+    )

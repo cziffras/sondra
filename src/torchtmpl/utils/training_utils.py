@@ -1,29 +1,27 @@
 import os
-from typing import Tuple
-import inspect
-import warnings
 
-import torch
-import torch.nn as nn
-import tqdm
-from torch.autograd import Variable
 import numpy as np
+import torch
+import tqdm
+from torch import nn
 
 from .metrics_utils import (
     compute_batch_confusion_matrix,
-    compute_iou,
     compute_classification_metrics,
-    compute_overall_accuracy,
+    compute_iou,
     compute_kappa,
-    normalize_confusion_matrix
+    compute_overall_accuracy,
+    empty_confusion_matrix,
+    normalize_confusion_matrix,
 )
+
 
 def train_one_epoch(
     model: nn.Module,
     loader: torch.utils.data.DataLoader,
     f_loss: nn.Module,
     optim: torch.optim.Optimizer,
-    scheduler: torch.optim.lr_scheduler,
+    scheduler: torch.optim.lr_scheduler.LRScheduler | None,
     device: torch.device,
     number_classes,
     epoch: int,
@@ -52,18 +50,16 @@ def train_one_epoch(
     num_batches = 0
     softmax = nn.Softmax(dim=1)
 
-    size = np.setdiff1d(np.arange(0, number_classes), np.array([ignore_index]))
-    conf_matrix_accum = np.zeros((len(size), len(size)))
+    evaluated_classes, conf_matrix_accum = empty_confusion_matrix(number_classes, ignore_index)
 
     for data in tqdm.tqdm(loader):
-        if isinstance(data, tuple) or isinstance(data, list):
+        if isinstance(data, (tuple, list)):
             inputs, labels = data
             labels = labels.to(device)
         else:
             inputs = data
 
-        inputs = Variable(inputs, requires_grad=False).to(device)
-        # Forward propagate through the model
+        inputs = inputs.to(device)
         pred_outputs = model(inputs)
 
         pred_outputs = softmax(torch.abs(pred_outputs).type(torch.float64))
@@ -76,31 +72,21 @@ def train_one_epoch(
         predictions_flat = pred_outputs.argmax(dim=1).cpu().numpy().flatten()
         labels_flat = labels.cpu().numpy().flatten()
 
-        # Update confusion matrix
         batch_cm = compute_batch_confusion_matrix(
             predictions=predictions_flat,
-            labels=labels_flat,
+            targets=labels_flat,
+            classes=evaluated_classes,
             ignore_index=ignore_index,
-            size=size,
         )
         conf_matrix_accum += batch_cm
 
-        # Backward pass and update
         optim.zero_grad()
         loss.backward()
 
-        # Clip gradients to prevent the exploding gradient problem
-        torch.nn.utils.clip_grad_norm_(
-            model.parameters(), max_norm=max_norm, norm_type=2
-        )
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_norm, norm_type=2)
 
-        # Compute the norm of the gradients
         total_norm = np.sqrt(
-            sum(
-                p.grad.data.norm(2).item() ** 2
-                for p in model.parameters()
-                if p.grad is not None
-            )
+            sum(p.grad.data.norm(2).item() ** 2 for p in model.parameters() if p.grad is not None)
         )
         gradient_norm += total_norm
 
@@ -113,9 +99,7 @@ def train_one_epoch(
             ),
         ):
             scheduler.step()
-        elif isinstance(
-            scheduler, torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
-        ):
+        elif isinstance(scheduler, torch.optim.lr_scheduler.CosineAnnealingWarmRestarts):
             scheduler.step(epoch + num_batches / len(loader))
 
         num_samples += inputs.shape[0]
@@ -133,7 +117,7 @@ def train_one_epoch(
 
     overall_accuracy = compute_overall_accuracy(conf_matrix_accum)
     kappa_score = compute_kappa(conf_matrix_accum)
-    metrics_classif = compute_classification_metrics(conf_matrix_accum, ignore_index)
+    metrics_classif = compute_classification_metrics(conf_matrix_accum)
     metrics["train_overall_accuracy"] = 100 * overall_accuracy
     metrics["train_kappa_score"] = 100 * kappa_score
     metrics["train_macro_precision"] = 100 * metrics_classif["macro_precision"]
@@ -177,19 +161,17 @@ def valid_epoch(
     num_batches = 0
     softmax = nn.Softmax(dim=1)
 
-    size = np.setdiff1d(np.arange(0, number_classes), np.array([ignore_index]))
-    conf_matrix_accum = np.zeros((len(size), len(size)))
+    evaluated_classes, conf_matrix_accum = empty_confusion_matrix(number_classes, ignore_index)
 
     with torch.no_grad():
         for data in tqdm.tqdm(loader):
-            if isinstance(data, tuple) or isinstance(data, list):
+            if isinstance(data, (tuple, list)):
                 inputs, labels = data
                 labels = labels.to(device)
             else:
                 inputs = data
-            inputs = Variable(inputs).to(device)
+            inputs = inputs.to(device)
 
-            # Forward propagate through the model
             pred_outputs = model(inputs)
 
             pred_outputs = softmax(torch.abs(pred_outputs).type(torch.float64))
@@ -202,12 +184,11 @@ def valid_epoch(
             predictions_flat = pred_outputs.argmax(dim=1).cpu().numpy().flatten()
             labels_flat = labels.cpu().numpy().flatten()
 
-            # Update confusion matrix
             batch_cm = compute_batch_confusion_matrix(
                 predictions=predictions_flat,
-                labels=labels_flat,
+                targets=labels_flat,
+                classes=evaluated_classes,
                 ignore_index=ignore_index,
-                size=size,
             )
             conf_matrix_accum += batch_cm
 
@@ -219,7 +200,7 @@ def valid_epoch(
 
     overall_accuracy = compute_overall_accuracy(conf_matrix_accum)
     kappa_score = compute_kappa(conf_matrix_accum)
-    metrics_classif = compute_classification_metrics(conf_matrix_accum, ignore_index)
+    metrics_classif = compute_classification_metrics(conf_matrix_accum)
     metrics["valid_overall_accuracy"] = 100 * overall_accuracy
     metrics["valid_kappa_score"] = 100 * kappa_score
     metrics["valid_macro_precision"] = 100 * metrics_classif["macro_precision"]
@@ -229,7 +210,6 @@ def valid_epoch(
     metrics["valid_recall_per_class"] = 100 * metrics_classif["recall_per_class"]
     metrics["valid_f1_per_class"] = 100 * metrics_classif["f1_per_class"]
 
-    # Additional segmentation-specific metrics
     iou_classes, mean_iou = compute_iou(conf_matrix_accum)
     metrics["valid_iou_per_class"] = 100 * iou_classes
     metrics["valid_mean_iou"] = 100 * mean_iou
@@ -251,21 +231,19 @@ def test_epoch(
     num_batches = 0
     softmax = nn.Softmax(dim=1)
 
-    size = np.setdiff1d(np.arange(0, number_classes), np.array([ignore_index]))
-    conf_matrix_accum = np.zeros((len(size), len(size)))
+    evaluated_classes, conf_matrix_accum = empty_confusion_matrix(number_classes, ignore_index)
 
     to_be_vizualized = []
 
     with torch.no_grad():
         for data in tqdm.tqdm(loader):
-            if isinstance(data, tuple) or isinstance(data, list):
+            if isinstance(data, (tuple, list)):
                 inputs, labels = data
                 labels = labels.to(device)
             else:
                 inputs = data
-            inputs = Variable(inputs).to(device)
+            inputs = inputs.to(device)
 
-            # Forward propagate through the model
             pred_outputs = model(inputs)
 
             pred_outputs = softmax(torch.abs(pred_outputs).type(torch.float64))
@@ -285,12 +263,11 @@ def test_epoch(
             predictions_flat = pred_outputs.argmax(dim=1).cpu().numpy().flatten()
             labels_flat = labels.cpu().numpy().flatten()
 
-            # Update confusion matrix
             batch_cm = compute_batch_confusion_matrix(
                 predictions=predictions_flat,
-                labels=labels_flat,
+                targets=labels_flat,
+                classes=evaluated_classes,
                 ignore_index=ignore_index,
-                size=size,
             )
 
             conf_matrix_accum += batch_cm
@@ -302,8 +279,8 @@ def test_epoch(
 
     overall_accuracy = compute_overall_accuracy(conf_matrix_accum)
     kappa_score = compute_kappa(conf_matrix_accum)
-    metrics_classif = compute_classification_metrics(conf_matrix_accum, ignore_index)
-    conf_matrix_accum = normalize_confusion_matrix(conf_matrix_accum)
+    metrics_classif = compute_classification_metrics(conf_matrix_accum)
+    iou_classes, mean_iou = compute_iou(conf_matrix_accum)
 
     metrics["test_overall_accuracy"] = 100 * overall_accuracy
     metrics["test_kappa_score"] = 100 * kappa_score
@@ -313,11 +290,12 @@ def test_epoch(
     metrics["test_precision_per_class"] = 100 * metrics_classif["precision_per_class"]
     metrics["test_recall_per_class"] = 100 * metrics_classif["recall_per_class"]
     metrics["test_f1_per_class"] = 100 * metrics_classif["f1_per_class"]
-    iou_classes, mean_iou = compute_iou(conf_matrix_accum)
     metrics["test_iou_per_class"] = 100 * iou_classes
     metrics["test_mean_iou"] = 100 * mean_iou
 
-    return metrics, to_be_vizualized, conf_matrix_accum
+    # every metric above reads raw counts; only the returned matrix is
+    # row-normalised, for the heatmap
+    return metrics, to_be_vizualized, normalize_confusion_matrix(conf_matrix_accum)
 
 
 def one_forward(model, loader, device):
@@ -331,31 +309,24 @@ def one_forward(model, loader, device):
 
     with torch.no_grad():
         for _, data in enumerate(tqdm.tqdm(loader)):
-
-            # Handle different data structures (tuple, list, or otherwise)
             if isinstance(data, (tuple, list)):
                 if len(data) == 2:
-                    inputs, labels = data  # For standard datasets
+                    inputs, labels = data
                 elif len(data) == 3:
-                    inputs, labels, idx = data  # For wrapped datasets
+                    inputs, labels, idx = data
                     list_of_indices.extend(idx.cpu().numpy().tolist())
                 else:
                     raise ValueError("Unexpected data format in loader.")
             else:
                 inputs = data
                 labels = None
-            # Need to adapt the wrapper and the collect of the indices for reconstruction datasets
 
-            inputs = Variable(inputs).to(device)
+            inputs = inputs.to(device)
 
-            # Forward propagate through the model
             pred_outputs = model(inputs)
 
             pred_outputs = (
-                softmax(torch.abs(pred_outputs).type(torch.float64))
-                .argmax(dim=1)
-                .cpu()
-                .numpy()
+                softmax(torch.abs(pred_outputs).type(torch.float64)).argmax(dim=1).cpu().numpy()
             )
             outputs.extend(pred_outputs)
 
@@ -365,7 +336,7 @@ def one_forward(model, loader, device):
     )
 
 
-class ModelCheckpoint(object):
+class ModelCheckpoint:
     def __init__(
         self,
         model: torch.nn.Module,
@@ -418,44 +389,34 @@ class ModelCheckpoint(object):
         return self.best_score is None or score > self.best_score
 
     def update(self, score: float, epoch: int) -> bool:
-        """
-        If the provided score is better than the best score registered so far,
-        saves the model's parameters on disk as a pytorch tensor
-
-        Arguments:
-            score: the new score to consider
-
-        Returns:
-            res: whether or not the provided score is better than the best score
-                 registered so far
-        """
         if self.is_better(score):
-            self.model.eval()
-            torch.save(
-                {
-                    "epoch": epoch,
-                    "model_state_dict": self.model.state_dict(),
-                    "optimizer_state_dict": self.optimizer.state_dict(),
-                    "loss": score,
-                },
-                os.path.join(self.savepath, "best_model.pt"),
-            )
-
+            self.save(score, epoch)
             self.best_score = score
             return True
         return False
-    
-    def load_best_checkpoint(self) -> int:
-        
+
+    def save(self, score: float, epoch: int) -> None:
+        self.model.eval()
+        torch.save(
+            {
+                "epoch": epoch,
+                "model_state_dict": self.model.state_dict(),
+                "optimizer_state_dict": self.optimizer.state_dict(),
+                "loss": score,
+            },
+            os.path.join(self.savepath, "best_model.pt"),
+        )
+
+    def load_best_checkpoint(self) -> tuple[nn.Module, torch.optim.Optimizer, float]:
+
         filepath = os.path.join(self.savepath, "best_model.pt")
         if not os.path.isfile(filepath):
             raise FileNotFoundError(f"Checkpoint '{filepath}' not found")
-        checkpoint = torch.load(filepath)
+        checkpoint = torch.load(filepath, weights_only=True)
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.best_score = checkpoint["loss"]
         return self.model, self.optimizer, self.best_score
-
 
 
 def generate_unique_logpath(logdir: str, raw_run_name: str) -> str:
@@ -477,17 +438,13 @@ def generate_unique_logpath(logdir: str, raw_run_name: str) -> str:
 
     highest_num = -1
     for item in os.listdir(logdir):
-        if item.startswith(raw_run_name + "_") and os.path.isdir(
-            os.path.join(logdir, item)
-        ):
+        if item.startswith(raw_run_name + "_") and os.path.isdir(os.path.join(logdir, item)):
             try:
                 suffix = int(item.split("_")[-1])
                 highest_num = max(highest_num, suffix)
             except ValueError:
-                # If conversion to int fails, ignore the directory name
                 continue
 
-    # The new directory name should be one more than the highest found
     new_num = highest_num + 1
     run_name = f"{raw_run_name}_{new_num}"
     log_path = os.path.join(logdir, run_name)

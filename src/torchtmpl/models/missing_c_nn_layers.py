@@ -1,6 +1,6 @@
 import torch
 import torch.fx
-from torch import nn, Tensor
+from torch import Tensor, nn
 from torchvision.utils import _log_api_usage_once
 
 
