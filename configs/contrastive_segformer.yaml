@@ -1,3 +1,5 @@
+seed: 42
+
 data:
   root_dir: "/media/emmanuel/T7_Data/SAN_FRANCISCO_ALOS2"
   dataset: polsf

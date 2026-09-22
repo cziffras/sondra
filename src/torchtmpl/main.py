@@ -17,6 +17,7 @@ from .utils import (
     count_parameters,
     log_confusion_matrix,
     log_predictions_on_wandb,
+    set_seed,
     training_contrastive_utils,
     training_utils,
 )
@@ -30,6 +31,10 @@ def train(config, wandb_run, visualize):
         torch.cuda.empty_cache()
 
     logging.info(f"Using device : {device}")
+
+    # before anything is built: the weights are drawn at construction
+    set_seed(config["seed"])
+    logging.info(f"= Seed {config['seed']}")
 
     contrastive = config["model"].get("contrastive", False)
 

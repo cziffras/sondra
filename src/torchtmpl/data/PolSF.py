@@ -133,6 +133,7 @@ class PolSFDataManager:
 
         self.use_cuda = use_cuda
         self.contrastive = config["model"].get("contrastive", False)
+        self.seed = config["seed"]
         self.config = config["data"]
 
         # POLSF_ROOT wins over the config
@@ -143,12 +144,16 @@ class PolSFDataManager:
         self.patch_stride = tuple(self.config.get("patch_stride", self.patch_size))
 
     def _loader(self, dataset, shuffle):
+        generator = torch.Generator()
+        generator.manual_seed(self.seed)
+
         return torch.utils.data.DataLoader(
             dataset,
             shuffle=shuffle,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=self.use_cuda,
+            generator=generator,
         )
 
     def get_dataloaders(self):
@@ -256,24 +261,24 @@ class PolSFDataManager:
 
     def _mosaic_split(self, dataset):
         """
-        In prior version of this project, we were selecting patches at random, 
+        In prior version of this project, we were selecting patches at random,
         now the patch grid is splitted on a fixed lattice to ensure that :
         - two test patches are never adjacent
-        - every interior test patch has the same neighbourhood; three train patches 
+        - every interior test patch has the same neighbourhood; three train patches
         and one valid patch.
 
         A patch at row i, column j goes to `(i + 2 * j) % 5`, which sends a
-        fifth of the grid to test, a fifth to valid and the rest to train. 
+        fifth of the grid to test, a fifth to valid and the rest to train.
 
         Being a lattice it needs no seed, and it keeps the class balance of the
         scene: the three subsets stay within a third of a point of each other
         on every class.
 
-        NOTE : 
+        NOTE :
 
         It does not pretend to measure generalisation to an unseen area: each
         test patch is surrounded by training data 64 pixels away. It fixes that
-        bias identically for everyone instead of removing it, so a difference in 
+        bias identically for everyone instead of removing it, so a difference in
         score between two configs cannot come from a lucky draw.
         """
         columns = dataset.nsamples_per_cols
