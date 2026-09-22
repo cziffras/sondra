@@ -190,16 +190,19 @@ def train(config, wandb_run, visualize):
             tensorboard_writer.add_scalar(key, value, e)
         wandb_run.log(metrics, step=e)
 
-        updated = model_checkpoint.update(score=selection_score, epoch=e)
-        logging.info(
-            "[%d/%d] train %.3f, %s %.3f%s",
-            e,
-            config["nepochs"],
-            train_loss,
-            "selection" if contrastive else "valid",
-            selection_score,
-            " [>> BETTER <<]" if updated else "",
-        )
+        if contrastive:
+            model_checkpoint.save(score=train_loss, epoch=e)
+            logging.info("[%d/%d] train %.3f", e, config["nepochs"], train_loss)
+        else:
+            updated = model_checkpoint.update(score=selection_score, epoch=e)
+            logging.info(
+                "[%d/%d] train %.3f, valid %.3f%s",
+                e,
+                config["nepochs"],
+                train_loss,
+                selection_score,
+                " [>> BETTER <<]" if updated else "",
+            )
 
         if scheduler is not None and config["scheduler"]["name"] == "CosineAnnealingLR":
             scheduler.step()

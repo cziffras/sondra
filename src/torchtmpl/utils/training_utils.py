@@ -389,39 +389,30 @@ class ModelCheckpoint:
         return self.best_score is None or score > self.best_score
 
     def update(self, score: float, epoch: int) -> bool:
-        """
-        If the provided score is better than the best score registered so far,
-        saves the model's parameters on disk as a pytorch tensor
-
-        Arguments:
-            score: the new score to consider
-
-        Returns:
-            res: whether or not the provided score is better than the best score
-                 registered so far
-        """
         if self.is_better(score):
-            self.model.eval()
-            torch.save(
-                {
-                    "epoch": epoch,
-                    "model_state_dict": self.model.state_dict(),
-                    "optimizer_state_dict": self.optimizer.state_dict(),
-                    "loss": score,
-                },
-                os.path.join(self.savepath, "best_model.pt"),
-            )
-
+            self.save(score, epoch)
             self.best_score = score
             return True
         return False
+
+    def save(self, score: float, epoch: int) -> None:
+        self.model.eval()
+        torch.save(
+            {
+                "epoch": epoch,
+                "model_state_dict": self.model.state_dict(),
+                "optimizer_state_dict": self.optimizer.state_dict(),
+                "loss": score,
+            },
+            os.path.join(self.savepath, "best_model.pt"),
+        )
 
     def load_best_checkpoint(self) -> tuple[nn.Module, torch.optim.Optimizer, float]:
 
         filepath = os.path.join(self.savepath, "best_model.pt")
         if not os.path.isfile(filepath):
             raise FileNotFoundError(f"Checkpoint '{filepath}' not found")
-        checkpoint = torch.load(filepath)
+        checkpoint = torch.load(filepath, weights_only=True)
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.best_score = checkpoint["loss"]
