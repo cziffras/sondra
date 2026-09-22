@@ -190,7 +190,7 @@ class FourierAugment:
 
 class SpeckleAugment:
     """
-    Applies realistic speckle noise typical of SAR images as multiplicative 
+    Applies realistic speckle noise typical of SAR images as multiplicative
     noise.
 
     See : https://core.ac.uk/download/pdf/17332528.pdf p.4-5
@@ -230,7 +230,6 @@ class SpeckleAugment:
         new_imag = new_magnitude * torch.sin(phase)
 
         return torch.complex(new_real, new_imag)
-
 
 
 class RotateFlip:
@@ -292,7 +291,7 @@ class ElasticDeformation:
         kernel_size = int(self.sigma * 4) | 1
         dx = (
             F.avg_pool2d(
-                dx.unsqueeze(0).unsqueeze(0),
+                dx.unsqueeze(0).unsqueeze(0),  # 2dConv expect (batch, channels, height, width)
                 kernel_size=kernel_size,
                 stride=1,
                 padding=kernel_size // 2,
@@ -348,7 +347,6 @@ class SARContrastiveAugmentations:
         num_holes (tuple): Range for number of holes.
         intensity_factor (float): Intensity variation.
         speckle_options (tuple): (intensity, distribution) for SpeckleAugment.
-        phase_shift (float): Maximum phase shift.
         elastic_options (tuple): (alpha, sigma) for ElasticDeformation.
         fourier_options (tuple): (mask_prob, preserve_center) for FourierAugment.
         use_elastic (bool): Whether to use elastic deformation.
@@ -361,7 +359,6 @@ class SARContrastiveAugmentations:
         num_holes=(1, 2),
         intensity_factor=0.05,
         speckle_options=(0.2, "gamma"),
-        phase_shift=0, # See NOTE in PhaseAugment docstring
         elastic_options=(5.0, 3.0),
         fourier_options=(0.1, True),
         use_elastic=True,
@@ -399,7 +396,6 @@ class SARContrastiveAugmentations:
 
         view2 = img.clone()
         view2 = self.random_hole(view2)
-        view2 = self.phase_aug(view2)
         view2 = self.fourier_aug(view2)
 
         return view1, view2
