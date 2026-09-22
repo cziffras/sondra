@@ -26,8 +26,12 @@ class UNet(nn.Module):
     ):
         super().__init__()
 
+        # FIX : was not compatible with LayerNorm that requires knowing the exact
+        # spatial dimension of patches 
         if isinstance(input_size, tuple):
-            input_size = input_size[0]
+            if input_size[-1] != input_size[-2]:
+                raise ValueError("Input patches are not squares !")
+            input_size = input_size[-1]
 
         current_channels = channels_ratio
         self.encoder_layers = []
@@ -157,7 +161,7 @@ class SegmentationUNet(UNet):
         num_channels = cfg.get("num_channels", 3)
         num_layers = cfg.get("num_layers", 4)
         channels_ratio = cfg.get("channels_ratio", 64)
-        activation = activation_dict[cfg.get("activation", "modReLu")]()
+        activation = activation_dict[cfg.get("activation", "modReLU")]
         normalization_method = cfg.get("normalization_method", "BatchNorm")
         track_running_stats = cfg.get("track_running_stats", True)
         downsampling_method = cfg.get("downsampling_method", "MaxPool")

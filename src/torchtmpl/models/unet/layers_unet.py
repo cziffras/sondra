@@ -4,8 +4,20 @@ import torchcvnn.nn.modules as c_nn
 from torch import nn
 
 
+def make_normalization(method, channels, input_size, dtype, track_running_stats):
+    if method == "BatchNorm":
+        return c_nn.BatchNorm2d(channels, cdtype=dtype, track_running_stats=track_running_stats)
+    if method == "LayerNorm":
+        return c_nn.LayerNorm(normalized_shape=(channels, input_size, input_size))
+    if method is None:
+        return nn.Identity()
+    raise ValueError(f"Unknown normalization_method {method!r}")
+
+
 class DoubleConv(nn.Module):
-    """(convolution => [BN] => ReLU) * 2"""
+    """
+    (convolution => [BN] => activation) * 2, with a residual shortcut.
+    """
 
     def __init__(
         self,
@@ -38,18 +50,11 @@ class DoubleConv(nn.Module):
             padding_mode="circular",
             dtype=dtype,
         )
-        if normalization_method == "BatchNorm":
-            self.normalization1 = c_nn.BatchNorm2d(
-                mid_channels, cdtype=dtype, track_running_stats=track_running_stats
-            )
-        elif normalization_method == "LayerNorm":
-            self.normalization1 = c_nn.LayerNorm(
-                normalized_shape=(mid_channels, input_size, input_size)
-            )
-        elif normalization_method == None:
-            self.normalization1 = nn.Identity()
+        self.normalization1 = make_normalization(
+            normalization_method, mid_channels, input_size, dtype, track_running_stats
+        )
+        self.activation1 = activation()
 
-        self.activation = activation
         self.conv2 = nn.Conv2d(
             mid_channels,
             out_channels,
@@ -60,21 +65,14 @@ class DoubleConv(nn.Module):
             padding_mode="circular",
             dtype=dtype,
         )
-        if normalization_method == "BatchNorm":
-            self.normalization2 = c_nn.BatchNorm2d(
-                num_features=out_channels,
-                cdtype=dtype,
-                track_running_stats=track_running_stats,
-            )
-        elif normalization_method == "LayerNorm":
-            self.normalization2 = c_nn.LayerNorm(
-                normalized_shape=(out_channels, input_size, input_size)
-            )
-        elif normalization_method == None:
-            self.normalization2 = nn.Identity()
+        self.normalization2 = make_normalization(
+            normalization_method, out_channels, input_size, dtype, track_running_stats
+        )
 
         self.dropout = c_nn.Dropout2d(dropout)
 
+        # its own normalisation: reusing normalization2 here would update its
+        # running statistics twice per forward, on two different distributions
         self.shortcut = nn.Sequential(
             nn.Conv2d(
                 in_channels,
@@ -86,13 +84,16 @@ class DoubleConv(nn.Module):
                 padding_mode="circular",
                 dtype=dtype,
             ),
-            self.normalization2,
+            make_normalization(
+                normalization_method, out_channels, input_size, dtype, track_running_stats
+            ),
         )
+        self.activation2 = activation()
 
     def forward(self, x):
         identity = x
 
-        out = self.activation(self.normalization1(self.conv1(x)))
+        out = self.activation1(self.normalization1(self.conv1(x)))
         out = self.normalization2(self.conv2(out))
 
         out = self.dropout(out)
@@ -100,7 +101,7 @@ class DoubleConv(nn.Module):
         identity = self.shortcut(identity)
         out += identity
 
-        out = self.activation(out)
+        out = self.activation2(out)
         return out
 
 
