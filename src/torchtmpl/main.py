@@ -47,6 +47,15 @@ def train(config, wandb_run, visualize):
     logging.info("= Model")
     model_config = config["model"]
     model = models.build_model(model_config, input_size, num_classes)
+
+    if "pretrained_weights" in model_config:
+        path = model_config["pretrained_weights"]
+        transferred = models.load_pretrained_encoder(model, path)
+        logging.info(
+            f"= Encoder initialised from {path} ({transferred} tensors), "
+            "decoder and head start from scratch"
+        )
+
     num_params = count_parameters(model)
     model.to(device)
 

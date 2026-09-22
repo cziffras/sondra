@@ -9,6 +9,8 @@ UPSAMPLING_FACTOR = 2
 
 
 class UNet(nn.Module):
+    PRETRAINED_MODULES = ("encoder_block", "bridge_block")
+
     def __init__(
         self,
         num_channels,

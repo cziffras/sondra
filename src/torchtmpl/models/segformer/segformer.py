@@ -9,6 +9,8 @@ from .layers_segformer import LayerNorm2d, SegFormerSegmentationHead
 
 
 class SegFormer(nn.Module):
+    PRETRAINED_MODULES = ("encoder",)
+
     def __init__(
         self,
         in_channels: int,
