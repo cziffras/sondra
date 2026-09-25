@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import pathlib
@@ -220,6 +221,10 @@ def train(config, wandb_run, visualize):
             number_classes=num_classes,
             ignore_index=0,
         )
+
+        # next to the checkpoint, so that a run directory holds its own results
+        with open(logdir / "test_metrics.json", "w") as f:
+            json.dump(test_metrics, f, indent=2, default=lambda array: array.tolist())
 
         wandb_run.log(test_metrics)
 
