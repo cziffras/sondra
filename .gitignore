@@ -186,4 +186,3 @@ logs/
 
 /logslurms/
 /job.sbatch
-uv.lock
