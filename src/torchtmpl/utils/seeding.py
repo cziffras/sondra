@@ -1,3 +1,4 @@
+import os
 import random
 
 import numpy as np
@@ -13,13 +14,15 @@ def set_seed(seed):
     PyTorch gives each one `base_seed + worker_id` for `random`, `torch` and 
     `numpy`.
 
-    Please note that if runs stay comparable they are not bit-for-bit identical
-    due to low level cuDNN optimizations. cudNN has non deterministic threading
-    causing roundoff variations, see : 
-    
+    Seeding alone does not make two runs identical: by default cuDNN may pick
+    kernels whose threading causes roundoff variations, see :
+
     https://docs.nvidia.com/deeplearning/cudnn/backend/latest/developer/misc.html
     """
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+    os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+    torch.use_deterministic_algorithms(True, warn_only=True)

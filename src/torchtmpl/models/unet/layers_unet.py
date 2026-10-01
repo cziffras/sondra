@@ -3,10 +3,12 @@ import torch.nn.functional as F
 import torchcvnn.nn.modules as c_nn
 from torch import nn
 
+from ..missing_c_nn_layers import BatchNorm2d
+
 
 def make_normalization(method, channels, input_size, dtype, track_running_stats):
     if method == "BatchNorm":
-        return c_nn.BatchNorm2d(channels, cdtype=dtype, track_running_stats=track_running_stats)
+        return BatchNorm2d(channels, cdtype=dtype, track_running_stats=track_running_stats)
     if method == "LayerNorm":
         return c_nn.LayerNorm(normalized_shape=(channels, input_size, input_size))
     if method is None:

@@ -25,6 +25,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
+import torch
 from sklearn.metrics import (
     accuracy_score,
     balanced_accuracy_score,
@@ -36,13 +37,17 @@ from sklearn.metrics import (
 import wandb
 
 
-def log_confusion_matrix(wandb_run, cm, title="Confusion Matrix", xlabel="Preds", ylabel="Labels"):
-
+def log_confusion_matrix(
+    wandb_run, cm, title="Confusion Matrix", xlabel="Preds", ylabel="Labels", labels="auto"
+):
+    """`labels` names the rows and columns: the default numbers them from 0, not by class."""
     plt.figure(figsize=(8, 6))
-    sns.heatmap(cm, annot=True, fmt=".2f", cmap="Blues")
+    sns.heatmap(cm, annot=True, fmt=".2f", cmap="Blues", xticklabels=labels, yticklabels=labels)
+    plt.xticks(rotation=45, ha="right")
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     plt.title(title)
+    plt.tight_layout()  # the class names would be cut at the edges
 
     wandb_run.log({"confusion_matrix": wandb.Image(plt)})
     plt.close()
@@ -85,6 +90,18 @@ def compute_batch_iou(predictions, labels, ignore_index=None):
     filtered_ground_truth = labels[mask]
 
     return jaccard_score(filtered_ground_truth, filtered_predictions, average="weighted")
+
+
+def predict(scores, ignore_index=None):
+    """
+    Class map (B, H, W) from class scores (B, C, H, W). The ignored class is never a
+    target, so it is never predicted either: a pixel given to it would drop out of the
+    confusion matrix, which keeps the evaluated classes only, instead of counting as an error.
+    """
+    if ignore_index is not None:
+        ignored = torch.tensor([ignore_index], device=scores.device)
+        scores = scores.index_fill(1, ignored, float("-inf"))
+    return scores.argmax(dim=1)
 
 
 def empty_confusion_matrix(number_classes, ignore_index):

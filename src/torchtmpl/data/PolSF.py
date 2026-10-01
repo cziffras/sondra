@@ -1,4 +1,5 @@
 import logging
+import mmap
 import os
 import pathlib
 
@@ -6,11 +7,50 @@ import numpy as np
 import torch
 from PIL import Image
 from torchcvnn.datasets import ALOSDataset
+from torchcvnn.datasets.alos2.sar_image import data_record_header_length, descriptor_record_length
 from torchcvnn.transforms import LogAmplitude, PolSARtoTensor
 from torchvision.transforms import v2
 
 from ..transforms import SARContrastiveAugmentations
 from ..utils import ToTensor
+
+
+class MemmapPatchReader:
+    """
+    Stands in for torchcvnn's `SARImage.read_patch`, which parses the header of every
+    line and decodes every pixel in Python we simply do it in numpy instead which represents
+    a x4 gain in speed when the data is cached, even more when it's not.
+    """
+
+    def __init__(self, image):
+        self.filepath = image.filepath
+        self.shape = (image.num_rows, data_record_header_length + 8 * image.num_cols)
+        self.records = None  # mapped on first read, in the process that reads
+
+    def __call__(self, start_line, num_lines, start_col, num_cols):
+        if self.records is None:
+            self.records = np.memmap(
+                self.filepath,
+                dtype=np.uint8,
+                mode="r",
+                offset=descriptor_record_length,
+                shape=self.shape,
+            )
+            # a patch uses 8 * num_cols bytes of each line it spans: the read-around the
+            # kernel does by default, as large as the drive's read-ahead (64 MB on my personal
+            # Samsung T7), would pull megabytes of other patches for each of them, instead we tell
+            # mmap NOT to try guessing the next patch location, loading the read ahead might :
+            # 1 - saturate the RAM
+            # 2 - cost precious time
+            if hasattr(mmap, "MADV_RANDOM"):
+                self.records._mmap.madvise(mmap.MADV_RANDOM)
+        first = data_record_header_length + 8 * start_col
+        block = self.records[start_line : start_line + num_lines, first : first + 8 * num_cols]
+        return np.ascontiguousarray(block).view(">c8").astype(np.complex128)
+
+    def __getstate__(self):
+        # when using several workers do not copy the memmap
+        return self.__dict__ | {"records": None}
 
 
 class EnhancedPolSFDataset(ALOSDataset):
@@ -55,6 +95,9 @@ class EnhancedPolSFDataset(ALOSDataset):
             crop_coordinates=crop_coordinates,
             **kwargs,
         )
+
+        for image in self.images.values():
+            image.read_patch = MemmapPatchReader(image)
 
         self.contrastive_mode = contrastive_mode
         self.transform_contrastive = transform_contrastive
@@ -180,8 +223,13 @@ class PolSFDataManager:
         dataset = self._create_standard_dataset()
         train, valid, test = self._mosaic_split(dataset)
 
+        train_fraction = self.config.get("train_fraction", 1.0)
+        if train_fraction < 1.0:
+            train = self._subsample(train, train_fraction)
+
         logging.info(
-            f"Mosaic split : {len(train)} train, {len(valid)} valid, {len(test)} test patches"
+            f"Mosaic split : {len(train)} train (fraction {train_fraction:g}), "
+            f"{len(valid)} valid, {len(test)} test patches"
         )
 
         classes = list(dataset.classes)
@@ -292,6 +340,18 @@ class PolSFDataManager:
         return tuple(
             torch.utils.data.Subset(dataset, buckets[cell]) for cell in (2, 1, 0)
         )  # train, valid, test
+
+    def _subsample(self, train, fraction):
+        """
+        The only way to find wether pretraining was effective is to compare the performance
+        of a baseline model trained with labeled data starting either with no contrastive 
+        basis or with randomly initialized weights. We fine-tune pretrained architectures and
+        a baseline on a growing proportion of the labeled data to measure which is more "frugal"
+        wrt data consumption.
+        """
+        order = torch.randperm(len(train), generator=torch.Generator().manual_seed(self.seed))
+        kept = order[: max(1, round(fraction * len(train)))].tolist()
+        return torch.utils.data.Subset(train.dataset, [train.indices[k] for k in kept])
 
     def _get_transform(self):
         params = self.config.get("transform_contrastive") or {}

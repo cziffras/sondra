@@ -123,6 +123,11 @@ class NTXentLearnableTemp(nn.Module):
         beta = torch.exp(self.log_beta)
         return (beta / beta.sum()).detach()
 
+    @property
+    def temperatures(self) -> torch.Tensor:
+        "tau_s = 1 / beta_s"
+        return torch.exp(-self.log_beta).detach()
+
 
 class NTXentLoss(nn.Module):
     """
@@ -220,6 +225,10 @@ class FocalLoss(nn.Module):
             valid_mask = targets != self.ignore_index
             loss = loss[valid_mask]
 
+        # a batch without a single labelled pixel has nothing to teach: the mean of an
+        # empty tensor would be NaN, and the step would turn every weight into NaN
+        if loss.numel() == 0:
+            return loss.sum()
         return loss.mean()
 
 
@@ -246,7 +255,7 @@ def get_loss(lossname, **kwargs):
         raise ValueError(
             f"'{lossname}' weighs one loss per encoder stage and needs num_stages. "
             "The UNet contrastive head returns a single embedding: use NTXentLoss."
-        )  
+        )
     # FIXME : UNet could be itself adapted to return stacked embeddings, should be done
     # to measure architecture gain between SegFormer and UNet and the overall postitive
     # effect of per-stage contrastive loss

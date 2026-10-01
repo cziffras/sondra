@@ -3,9 +3,10 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 from torchcvnn.nn.modules import Upsample, modReLU
 
+from ..missing_c_nn_layers import BatchNorm2d
 from .decoder_segformer import SegFormerDecoder
 from .encoder_segformer import SegFormerEncoder
-from .layers_segformer import LayerNorm2d, SegFormerSegmentationHead
+from .layers_segformer import SegFormerSegmentationHead
 
 
 class SegFormer(nn.Module):
@@ -54,7 +55,7 @@ class SegFormer(nn.Module):
                 [
                     nn.Sequential(
                         nn.Conv2d(c, proj_dim, kernel_size=1, bias=False, dtype=self.dtype),
-                        LayerNorm2d(proj_dim),
+                        BatchNorm2d(proj_dim),
                         modReLU(),
                     )
                     for c in widths

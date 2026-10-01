@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import pathlib
@@ -61,10 +62,19 @@ def train(config, wandb_run, visualize):
             "decoder and head start from scratch"
         )
 
+    if model_config.get("freeze_encoder", False):
+        # the encoder, pre-trained or random, becomes a fixed feature extractor: only the
+        # decoder and the head learn, which scores the representation itself, out of reach
+        # of a fine-tuning that would rewrite it. Its batch norms keep estimating their
+        # running statistics in training mode, as the pre-training checkpoints have none.
+        for name in model.PRETRAINED_MODULES:
+            model.get_submodule(name).requires_grad_(False)
+        logging.info(f"= Frozen: {', '.join(model.PRETRAINED_MODULES)}")
+
     num_params = count_parameters(model)
     model.to(device)
 
-    logging.info(f"= Model has {num_params} parameters")
+    logging.info(f"= Model has {num_params} trainable parameters")
 
     logging.info("= Loss")
     if contrastive:
@@ -77,7 +87,8 @@ def train(config, wandb_run, visualize):
         loss = losses.get_loss(config["loss"]["name"], ignore_index=0)
 
     logging.info("= Optimizer")
-    optimizer = optim.get_optimizer(config, model.parameters())
+    trainable = [p for p in model.parameters() if p.requires_grad]
+    optimizer = optim.get_optimizer(config, trainable)
 
     logging.info("= Scheduler")
     steps_per_epoch = len(train_loader)
@@ -120,8 +131,9 @@ def train(config, wandb_run, visualize):
 
     num_input_dims = len(input_size)
 
+    # the supervised checkpoint is the best validation mIoU, see below
     model_checkpoint = training_utils.ModelCheckpoint(
-        model, optimizer, str(logdir), num_input_dims, min_is_best=True
+        model, optimizer, str(logdir), num_input_dims, min_is_best=contrastive
     )
 
     train_epoch_func = (
@@ -129,6 +141,9 @@ def train(config, wandb_run, visualize):
         if contrastive
         else training_utils.train_one_epoch
     )
+    # the frugality runs train on a fraction f of the patches for nepochs / f epochs:
+    # validating every 1 / f epochs keeps the number of candidate checkpoints of a full run
+    valid_every = config.get("valid_every", 1)
     for e in range(config["nepochs"]):
         if contrastive:
             train_metrics = train_epoch_func(
@@ -160,7 +175,7 @@ def train(config, wandb_run, visualize):
             # pre-training holds nothing out, so the checkpoint follows the
             # training loss and the run is really a fixed budget
             selection_score = train_loss
-        else:
+        elif (e + 1) % valid_every == 0 or e == config["nepochs"] - 1:
             valid_metrics = training_utils.valid_epoch(
                 model=model,
                 loader=valid_loader,
@@ -168,8 +183,11 @@ def train(config, wandb_run, visualize):
                 device=device,
                 number_classes=num_classes,
             )
-            selection_score = valid_metrics["valid_loss"]
-            metrics["valid_loss"] = selection_score
+            # not the validation loss: as the model grows confident, a few rare pixels
+            # classified wrong with alpha weights up to 55 drive the focal loss up while
+            # the mIoU keeps improving, so the lowest loss picked epochs 0 to 6
+            selection_score = valid_metrics["valid_mean_iou"]
+            metrics["valid_loss"] = valid_metrics["valid_loss"]
             metrics["valid_overall_accuracy"] = valid_metrics["valid_overall_accuracy"]
             metrics["valid_mean_iou"] = valid_metrics["valid_mean_iou"]
 
@@ -178,6 +196,9 @@ def train(config, wandb_run, visualize):
         if hasattr(loss, "weights"):
             stage_weights = loss.weights.cpu()
             metrics |= {f"stage_weights/{i}": w.item() for i, w in enumerate(stage_weights)}
+        if hasattr(loss, "temperatures"):
+            temperatures = loss.temperatures.cpu()
+            metrics |= {f"stage_temperatures/{i}": t.item() for i, t in enumerate(temperatures)}
 
         for key, value in metrics.items():
             tensorboard_writer.add_scalar(key, value, e)
@@ -186,13 +207,16 @@ def train(config, wandb_run, visualize):
         if contrastive:
             model_checkpoint.save(score=train_loss, epoch=e)
             logging.info("[%d/%d] train %.3f", e, config["nepochs"], train_loss)
+        elif "valid_mean_iou" not in metrics:
+            logging.info("[%d/%d] train %.3f", e, config["nepochs"], train_loss)
         else:
             updated = model_checkpoint.update(score=selection_score, epoch=e)
             logging.info(
-                "[%d/%d] train %.3f, valid %.3f%s",
+                "[%d/%d] train %.3f, valid %.3f, valid mIoU %.2f%%%s",
                 e,
                 config["nepochs"],
                 train_loss,
+                metrics["valid_loss"],
                 selection_score,
                 " [>> BETTER <<]" if updated else "",
             )
@@ -210,7 +234,7 @@ def train(config, wandb_run, visualize):
 
         model, _, score = model_checkpoint.load_best_checkpoint()
 
-        logging.info(f"Loaded best model, validation loss : {score:.3f}")
+        logging.info(f"Loaded best model, validation mIoU : {score:.2f}%")
 
         # the test split never took part in selecting this checkpoint
         test_metrics, _, test_cm = training_utils.test_epoch(
@@ -220,6 +244,10 @@ def train(config, wandb_run, visualize):
             number_classes=num_classes,
             ignore_index=0,
         )
+
+        # next to the checkpoint, so that a run directory holds its own results
+        with open(logdir / "test_metrics.json", "w") as f:
+            json.dump(test_metrics, f, indent=2, default=lambda array: array.tolist())
 
         wandb_run.log(test_metrics)
 
@@ -252,9 +280,10 @@ def train(config, wandb_run, visualize):
         log_confusion_matrix(
             wandb_run=wandb_run,
             cm=test_cm,
-            title="Confusion Matrix",
+            title="Test Confusion Matrix",
             xlabel="Predictions",
             ylabel="Ground Truth",
+            labels=data.classes[1:],
         )
 
         if visualize:
@@ -264,6 +293,8 @@ def train(config, wandb_run, visualize):
                 device,
                 config,
                 logdir,
+                test_confusion_matrix=test_cm,
+                class_names=data.classes,
                 ignore_index=0,
                 training_metrics=metrics,
                 use_cuda=use_cuda,
@@ -309,7 +340,8 @@ def main():
         project=wandb_config.get("project", "segmentation-polsf"),
         entity=wandb_config.get("entity"),
         config=config,
-        name=f"{run_type}_{model_config['class']}",
+        # scripts/sweep.py names each run after its experiment and seed
+        name=wandb_config.get("name", f"{run_type}_{model_config['class']}"),
         tags=[run_type, model_config["class"]],
     )
 
@@ -321,7 +353,7 @@ def main():
     elif command == "test":
         test(config, wandb_run=wandb_run)
     else:
-        logging.error(f"Commande inconnue: {command}")
+        logging.error(f"Unknown command : {command}")
         sys.exit(-1)
 
 

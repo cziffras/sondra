@@ -1,6 +1,7 @@
 import torch
 import torch.fx
 from torch import Tensor, nn
+from torchcvnn.nn import modules as c_nn
 from torchvision.utils import _log_api_usage_once
 
 
@@ -74,3 +75,63 @@ class StochasticDepth(nn.Module):
     def __repr__(self) -> str:
         s = f"{self.__class__.__name__}(p={self.p}, mode={self.mode})"
         return s
+
+
+class BatchNorm2d(c_nn.BatchNorm2d):
+    """
+    torchcvnn's complex BatchNorm2d, did not take out the autograd the running
+    statistics, causing an OOM on my personal computer this translated as a growing
+    RAM usage over epochs while not the GPU's memory meaning that Pytorch was somehow
+    storing history objects in the RAM (backward frees the VRAM from large tensors).
+    """
+
+    def forward(self, z: Tensor) -> Tensor:
+        out = super().forward(z)
+        if self.training and self.track_running_stats:
+            self.running_mean = self.running_mean.detach()
+            self.running_var = self.running_var.detach()
+        return out
+
+
+
+class LayerNorm2d(nn.Module):
+    """
+    Layer Normalization for 2d tensors with complex parameters.
+
+    WARNING :
+
+    1 -
+        torchcvnn implementation of LayerNorm seems incorrect, it does : 
+
+        ```python
+        z_ravel = z.view(-1, C).transpose(0, 1)   # (C, B·H·W)
+        mus = z_ravel.mean(axis=-1)               # a mean PER CHANNEL, over the B·H·W rows
+        ```
+
+        This has a major consequence : in training the model sees random patches while in test
+        it sees them in the spatial order, the statistics differs a lot, so the features are 
+        distorted and so the predictions ! Need to check it further. 
+
+        2 -
+            Layernorm 2D might not be well suited for SAR data. A LayerNorm brings the
+            channels of each pixel back to the same order of magnitude and thus obliterate
+            "brightness" information : after the first convolution, which has no bias, a water
+            pixel and an urban pixel differ mostly by that magnitude. The per-pixel version indeed learns badly. 
+
+
+
+    NOTE : This class is kept for this documentation only, nothing uses it any more.
+    """
+
+    def __init__(self, normalized_shape):
+        super().__init__()
+        self.ln = c_nn.LayerNorm(normalized_shape)
+
+    def forward(self, x: Tensor) -> Tensor:
+        shape_orig = x.shape
+        x = x.permute(0, 2, 3, 1) # (B, C, H, W) -> (B, H, W, C) layernorm applies averaging onto channels/the last axis
+        x = x.reshape(-1, x.size(-1)) # -> (B·H·W, C) : one row per pixel of the whole batch
+        x = self.ln(x) # READ DOCSTRING
+        x = x.view(shape_orig[0], shape_orig[2], shape_orig[3], shape_orig[1])
+        x = x.permute(0, 3, 1, 2)
+        return x

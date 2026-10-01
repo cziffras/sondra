@@ -11,11 +11,7 @@ from torch import nn
 
 import wandb
 
-from .metrics_utils import (
-    compute_batch_confusion_matrix,
-    empty_confusion_matrix,
-    normalize_confusion_matrix,
-)
+from .metrics_utils import predict
 
 
 def plot_segmentation_images(
@@ -23,6 +19,7 @@ def plot_segmentation_images(
     confusion_matrix: np.ndarray,
     number_classes: int,
     logdir: str,
+    class_names: list,
     ignore_index: int = None,
     sets_masks: np.ndarray = None,
     other_metrics=None,
@@ -35,9 +32,11 @@ def plot_segmentation_images(
                                        - First channel: Ground truth.
                                        - Second channel: Prediction.
                                        - Third channel: Original image (optional).
-        confusion_matrix (np.ndarray): Confusion matrix of shape (number_classes, number_classes).
+        confusion_matrix (np.ndarray): Row-normalised confusion matrix of the test split, over
+                                       the evaluated classes (the ignored one left out).
         number_classes (int): Number of classes for segmentation.
         logdir (str): Directory to save the plot.
+        class_names (list): Name of every class, the ignored one included.
         wandb_log (bool): Whether to log the plot to Weights & Biases.
         ignore_index (int, optional): Value in the ground truth to be ignored in the masked prediction.
         sets_masks (np.ndarray, optional): Array of shape (N, H, W) with integer values indicating dataset splits:
@@ -68,7 +67,7 @@ def plot_segmentation_images(
     bounds = np.arange(len(class_colors) + 1) - 0.5
     norm = BoundaryNorm(bounds, cmap.N)
     patches = [
-        mpatches.Patch(color=class_colors[i], label=f"Class {i}")
+        mpatches.Patch(color=class_colors[i], label=class_names[i])
         for i in sorted(class_colors.keys())
     ]
 
@@ -129,18 +128,20 @@ def plot_segmentation_images(
             axes[i][3].set_title(f"Sets Mask {i + 1}")
             axes[i][3].axis("off")
 
+    evaluated_names = [name for i, name in enumerate(class_names) if i != ignore_index]
     sns.heatmap(
         confusion_matrix.round(decimals=3),
         annot=True,
         fmt=".2g",
         cmap="Blues",
         ax=axes[-1][0],
-        xticklabels=np.setdiff1d(np.arange(0, number_classes), np.array([ignore_index])),
-        yticklabels=np.setdiff1d(np.arange(0, number_classes), np.array([ignore_index])),
+        xticklabels=evaluated_names,
+        yticklabels=evaluated_names,
     )
+    axes[-1][0].tick_params(axis="x", labelrotation=45)
     axes[-1][0].set_xlabel("Predicted Class")
     axes[-1][0].set_ylabel("Ground Truth Class")
-    axes[-1][0].set_title("Confusion Matrix")
+    axes[-1][0].set_title("Test Confusion Matrix")
 
     legend_ax = axes[-1][1]
     legend_ax.axis("off")
@@ -162,7 +163,7 @@ def plot_segmentation_images(
 
     logs = {
         "segmentation_images": [
-            wandb.Image(path, caption="Segmentation Images and Confusion Matrix")
+            wandb.Image(path, caption="Segmentation of the labelled area and test confusion matrix")
         ]
     }
     if other_metrics is not None:
@@ -248,58 +249,25 @@ def reassemble_image(
     return reassembled_image, mask
 
 
-def one_forward_with_conf_mat(model, loader, device, number_classes, ignore_index=0):
+def predict_patches(model, loader, device, ignore_index=0):
+    """Predicted class map of every patch the loader yields, with the patch indices."""
     outputs = []
+    list_of_indices = []
     model.eval()
     model.to(device)
 
     softmax = nn.Softmax(dim=1)
 
-    list_of_indices = []
-
-    evaluated_classes, conf_matrix_accum = empty_confusion_matrix(number_classes, ignore_index)
-
     with torch.no_grad():
-        for _, data in enumerate(tqdm.tqdm(loader)):
-            if isinstance(data, (tuple, list)):
-                if len(data) == 2:
-                    inputs, labels = data
-                elif len(data) == 3:
-                    inputs, labels, idx = data
-                    list_of_indices.extend(idx.cpu().numpy().tolist())
-                else:
-                    raise ValueError("Unexpected data format in loader.")
-            else:
-                raise ValueError(
-                    "This loader yields inputs without labels, but a confusion matrix "
-                    "is computed here: use a loader returning (inputs, labels)."
-                )
-
-            inputs = inputs.to(device)
-
-            pred_outputs = model(inputs)
-
-            pred_outputs = (
-                softmax(torch.abs(pred_outputs).type(torch.float64)).argmax(dim=1).cpu().numpy()
+        for inputs, _, idx in tqdm.tqdm(loader):
+            pred_outputs = model(inputs.to(device))
+            pred_outputs = predict(
+                softmax(torch.abs(pred_outputs).type(torch.float64)), ignore_index
             )
-            outputs.extend(pred_outputs)
+            outputs.extend(pred_outputs.cpu().numpy())
+            list_of_indices.extend(idx.cpu().numpy().tolist())
 
-            labels_flat = labels.cpu().numpy().flatten()
-            batch_cm = compute_batch_confusion_matrix(
-                predictions=pred_outputs.flatten(),
-                targets=labels_flat,
-                classes=evaluated_classes,
-                ignore_index=ignore_index,
-            )
-
-            conf_matrix_accum += batch_cm
-
-    conf_matrix_accum = normalize_confusion_matrix(conf_matrix_accum)
-    return (
-        outputs,
-        list_of_indices,
-        conf_matrix_accum,
-    )
+    return outputs, list_of_indices
 
 
 def log_predictions_on_wandb(
@@ -308,12 +276,15 @@ def log_predictions_on_wandb(
     device,
     config,
     logdir,
+    test_confusion_matrix,
+    class_names,
     ignore_index=0,
     training_metrics=None,
     use_cuda=False,
 ) -> None:
     """
-    Test the model based on the given configuration.
+    Maps of the prediction over the whole labelled area, train patches included, next to
+    the confusion matrix of the test split alone: `test_confusion_matrix`, from test_epoch.
     """
 
     from ..data.wrappers import get_full_image_dataloader
@@ -329,15 +300,10 @@ def log_predictions_on_wandb(
         nsamples_per_rows,
     ) = get_full_image_dataloader(config, use_cuda=use_cuda)
 
-    (
-        reconstructed_tensors,
-        list_of_indices,
-        cm,
-    ) = one_forward_with_conf_mat(
+    reconstructed_tensors, list_of_indices = predict_patches(
         model=model,
         loader=data_loader,
         device=device,
-        number_classes=num_classes,
         ignore_index=ignore_index,
     )
 
@@ -391,10 +357,11 @@ def log_predictions_on_wandb(
 
     plot_segmentation_images(
         to_be_vizualized=to_be_vizualized,
-        confusion_matrix=cm,
+        confusion_matrix=test_confusion_matrix,
         number_classes=num_classes,
         ignore_index=ignore_index,
         logdir=logdir,
+        class_names=class_names,
         sets_masks=sets_masks,
         other_metrics=training_metrics,
     )

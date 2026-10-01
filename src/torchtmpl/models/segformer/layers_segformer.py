@@ -3,34 +3,13 @@ from einops import rearrange
 from torch import Tensor, nn
 from torchcvnn.nn.modules import (
     CGELU,
-    BatchNorm2d,
-    LayerNorm,
     MultiheadAttention,
     modReLU,
 )
 
+from ..missing_c_nn_layers import BatchNorm2d
 
-class LayerNorm2d(nn.Module):
-    """
-    Layer Normalization for 2d tensors with complex parameters.
 
-    WARNING :
-    There was an issue with contiguity, apparently solved by using native methods
-    instead of einops.
-    """
-
-    def __init__(self, normalized_shape):
-        super().__init__()
-        self.ln = LayerNorm(normalized_shape)
-
-    def forward(self, x: Tensor) -> Tensor:
-        shape_orig = x.shape
-        x = x.permute(0, 2, 3, 1)
-        x = x.reshape(-1, x.size(-1))
-        x = self.ln(x)
-        x = x.view(shape_orig[0], shape_orig[2], shape_orig[3], shape_orig[1])
-        x = x.permute(0, 3, 1, 2)
-        return x
 
 
 class OverlapPatchMerging(nn.Sequential):
@@ -45,7 +24,7 @@ class OverlapPatchMerging(nn.Sequential):
                 bias=False,
                 dtype=torch.complex64,
             ),
-            LayerNorm2d(out_channels),
+            BatchNorm2d(out_channels),
         )
 
 
@@ -60,7 +39,7 @@ class EfficientMultiHeadAttention(nn.Module):
                 stride=reduction_ratio,
                 dtype=torch.complex64,
             ),
-            LayerNorm2d(channels),
+            BatchNorm2d(channels),
         )
         self.att = MultiheadAttention(channels, num_heads=num_heads, batch_first=True)
 

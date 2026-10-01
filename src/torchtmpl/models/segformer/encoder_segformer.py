@@ -2,10 +2,10 @@ import torch
 from torch import Tensor, nn
 
 from ..helpers import chunks
-from ..missing_c_nn_layers import StochasticDepth
+from ..missing_c_nn_layers import BatchNorm2d, StochasticDepth
+
 from .layers_segformer import (
     EfficientMultiHeadAttention,
-    LayerNorm2d,
     MixMLP,
     OverlapPatchMerging,
     ResidualAdd,
@@ -24,13 +24,13 @@ class SegFormerEncoderBlock(nn.Sequential):
         super().__init__(
             ResidualAdd(
                 nn.Sequential(
-                    LayerNorm2d(channels),
+                    BatchNorm2d(channels),
                     EfficientMultiHeadAttention(channels, reduction_ratio, num_heads),
                 )
             ),
             ResidualAdd(
                 nn.Sequential(
-                    LayerNorm2d(channels),
+                    BatchNorm2d(channels),
                     MixMLP(channels, expansion=mlp_expansion),
                     StochasticDepth(p=drop_path_prob, mode="batch"),
                 )
@@ -66,7 +66,7 @@ class SegFormerEncoderStage(nn.Module):
                 for i in range(depth)
             ]
         )
-        self.norm = LayerNorm2d(out_channels)
+        self.norm = BatchNorm2d(out_channels)
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.overlap_patch_merge(x)

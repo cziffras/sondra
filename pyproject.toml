@@ -15,6 +15,7 @@ dependencies = [
     "scikit-learn",
     "scipy",
     "seaborn",
+    "tabulate>=0.10.0",
     "tensorboard",
     "torch",
     "torchcvnn==0.9.4",
@@ -47,3 +48,7 @@ reportIndexIssue = "none"
 reportAttributeAccessIssue = "none"
 reportPrivateImportUsage = "none"
 reportCallIssue = "none"
+exclude = [
+    "**/venv",
+    "**/__pycache__"
+]

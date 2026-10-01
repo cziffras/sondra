@@ -13,6 +13,7 @@ from .metrics_utils import (
     compute_overall_accuracy,
     empty_confusion_matrix,
     normalize_confusion_matrix,
+    predict,
 )
 
 
@@ -69,7 +70,7 @@ def train_one_epoch(
             labels.type(torch.int64),
         )
 
-        predictions_flat = pred_outputs.argmax(dim=1).cpu().numpy().flatten()
+        predictions_flat = predict(pred_outputs, ignore_index).cpu().numpy().flatten()
         labels_flat = labels.cpu().numpy().flatten()
 
         batch_cm = compute_batch_confusion_matrix(
@@ -181,7 +182,7 @@ def valid_epoch(
                 labels.type(torch.int64),
             )
 
-            predictions_flat = pred_outputs.argmax(dim=1).cpu().numpy().flatten()
+            predictions_flat = predict(pred_outputs, ignore_index).cpu().numpy().flatten()
             labels_flat = labels.cpu().numpy().flatten()
 
             batch_cm = compute_batch_confusion_matrix(
@@ -247,6 +248,7 @@ def test_epoch(
             pred_outputs = model(inputs)
 
             pred_outputs = softmax(torch.abs(pred_outputs).type(torch.float64))
+            predictions = predict(pred_outputs, ignore_index)
 
             if num_samples_to_visualize > 0:
                 num_samples_to_visualize -= 1
@@ -256,11 +258,11 @@ def test_epoch(
                     (
                         inputs[random_index].cpu().numpy(),
                         labels[random_index].cpu().numpy(),
-                        pred_outputs.argmax(dim=1)[random_index].cpu().numpy(),
+                        predictions[random_index].cpu().numpy(),
                     )
                 )
 
-            predictions_flat = pred_outputs.argmax(dim=1).cpu().numpy().flatten()
+            predictions_flat = predictions.cpu().numpy().flatten()
             labels_flat = labels.cpu().numpy().flatten()
 
             batch_cm = compute_batch_confusion_matrix(
@@ -296,44 +298,6 @@ def test_epoch(
     # every metric above reads raw counts; only the returned matrix is
     # row-normalised, for the heatmap
     return metrics, to_be_vizualized, normalize_confusion_matrix(conf_matrix_accum)
-
-
-def one_forward(model, loader, device):
-    outputs = []
-    model.eval()
-    model.to(device)
-
-    softmax = nn.Softmax(dim=1)
-
-    list_of_indices = []
-
-    with torch.no_grad():
-        for _, data in enumerate(tqdm.tqdm(loader)):
-            if isinstance(data, (tuple, list)):
-                if len(data) == 2:
-                    inputs, labels = data
-                elif len(data) == 3:
-                    inputs, labels, idx = data
-                    list_of_indices.extend(idx.cpu().numpy().tolist())
-                else:
-                    raise ValueError("Unexpected data format in loader.")
-            else:
-                inputs = data
-                labels = None
-
-            inputs = inputs.to(device)
-
-            pred_outputs = model(inputs)
-
-            pred_outputs = (
-                softmax(torch.abs(pred_outputs).type(torch.float64)).argmax(dim=1).cpu().numpy()
-            )
-            outputs.extend(pred_outputs)
-
-    return (
-        outputs,
-        list_of_indices,
-    )
 
 
 class ModelCheckpoint:
@@ -402,7 +366,8 @@ class ModelCheckpoint:
                 "epoch": epoch,
                 "model_state_dict": self.model.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
-                "loss": score,
+                # a plain float: torch.load(weights_only=True) refuses numpy scalars
+                "score": float(score),
             },
             os.path.join(self.savepath, "best_model.pt"),
         )
@@ -415,7 +380,7 @@ class ModelCheckpoint:
         checkpoint = torch.load(filepath, weights_only=True)
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        self.best_score = checkpoint["loss"]
+        self.best_score = checkpoint["score"]
         return self.model, self.optimizer, self.best_score
 
 
