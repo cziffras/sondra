@@ -1,80 +1,60 @@
-# Semantic Segmentation for SAR Imagery
+# Contrastive pre-training of a complex-valued SegFormer for PolSAR segmentation
 
-This is a student project conducted by myself during my last year at CentraleSupélec supervised by Jérémy Fix (teacher on CentraleSupélec Metz Campus). This project is aiming to develop Deep Learning architecture compatible with SAR data in order to perform semantic segmentation on famous SAR imaging datasets. This repo focuses on Polarimetric San Francisco dataset that can be found on this [link](https://ietr-lab.univ-rennes1.fr/polsarpro-bio/san-francisco/).
+Code of my (Emmanuel BENICHOU) master thesis at CentraleSupélec and the SONDRA laboratory, supervised by
+Jérémy FIX, revised in September 2026. The thesis report is in
+[docs/master_thesis_Emmanuel_Benichou.pdf](docs/master_thesis_Emmanuel_Benichou.pdf). 
 
-PLEASE : if you are trying to get more information go check on [notes.md](notes.md)
+The co-authors of the original project (extending to more subjects such as triplet losses, benchmarks with UNet architecture...) were Rodolphe DURAND and Lazare PLISSON-ARCOS.
 
----
+A complex-valued SegFormer built on [torchcvnn](https://github.com/torchcvnn/torchcvnn)
+segments the ALOS-2 scene of San Francisco into the six land-cover classes of
+[PolSF](https://arxiv.org/abs/1912.07259). Its encoder is first pre-trained on the
+unlabelled part of the scene with one contrastive loss per stage, the stages being weighted
+either by a softmax with a KL penalty (`NTXentKLUnif`) or by learnable temperatures
+(`NTXentLearnableTemp`).
 
-## Features
+## Result
 
-- Implementation of state-of-the-art segmentation models: **UNet** and **SegFormer**
-- Integrated support for SAR data formats
-- Seamless training pipeline using `torchcvnn` (find [here](https://torchcvnn.github.io/torchcvnn/))
-- Experiment tracking via **Weights & Biases (WandB)**
+![Test mIoU against the share of labelled train patches](docs/frugality.png)
 
-## Running an Experiment
+Test mIoU against the share of the 2038 labelled train patches used, mean and standard
+deviation over 3 seeds, every run taking the same number of gradient steps. A fine-tuned
+pre-trained encoder has a higher mean than training from scratch at every fraction: by 10 to
+19 points on 10 and 25% of the patches, by 5 to 9 points from 50%. It also has less variance
+across the seeds. Frozen, the pre-trained encoders still beat a frozen random one, so the representation itself holds some information about the classes.
 
-To launch a training run, navigate to the project root and execute:
-
-```bash
-cd ~/sondra
-python -m src.torchtmpl.main configs/baseline_unet.yaml train
-```
-
-You can modify the configuration by editing or switching files in the `configs/` directory.
-
-## Installation
-
-Set up your environment by creating and activating a virtual environment:
+## Setup
 
 ```bash
-python -m venv venv
-source venv/bin/activate
+uv sync
 ```
 
-Then install the required Python packages:
+Put the ALOS-2 archive of the [IETR](https://ietr-lab.univ-rennes1.fr/polsarpro-bio/san-francisco/)
+(`VOL-`, `LED-` and `IMG-` files) and the label map `SF-ALOS2-label2d.png` of
+[PolSF](https://github.com/liuxuvip/PolSF) in one directory, and point `data.root_dir` of
+the configs at it, or set `POLSF_ROOT`. Runs are logged to Weights & Biases: `wandb login`,
+or `WANDB_MODE=offline`.
+
+## Usage
 
 ```bash
-pip install -r requirements.txt
+# a single run / novis stands for no visualisation
+uv run python -m src.torchtmpl.main configs/baseline_segformer.yaml train novis
+
+# the experiments of the thesis, logged in logs/sweep/
+ENCODERS=pretrain-NTXentKLUnif-lambda0,pretrain-NTXentLearnableTemp-lambda0
+uv run python -m scripts.sweep pretrain --seeds 0
+uv run python -m scripts.sweep finetune --encoders $ENCODERS --seeds 0,1,2
+uv run python -m scripts.sweep frugal --encoders $ENCODERS --seeds 0,1,2
+uv run python -m scripts.sweep summary
 ```
 
-> The `requirements.txt` file was generated using:
-> 
-> ```bash
-> pip list --format=freeze > requirements.txt
-> ```
+## Notes on torchcvnn 0.9.4
 
-## Result Visualization
+- `LayerNorm` computes its statistics across the batch rather than within each sample, so
+  a prediction depends on the other patches of its batch (still the case in 0.10.0). The
+  SegFormer uses the complex `BatchNorm2d` instead.
 
-All training metrics and outputs are logged using **Weights & Biases (WandB)**. Once logged in, you can monitor:
+## Licence
 
-- Confusion matrices
-- Predicted segmentation masks
-- Training and validation metrics
-- And soon more !
-
-To enable logging:
-
-```bash
-wandb login
-```
-
-You can then view your runs at [wandb.ai](https://wandb.ai).
-
-## Repository Structure
-
-```bash
-sondra/
-├── configs/              # YAML config files for experiments
-├── src/torchtmpl/        # Core implementation (datasets, models, training, etc.)
-├── logs/                 # logging outputs
-└── requirements.txt   # Dependency list compatible with pip
-```
-
----
-
-For questions, improvements, or contributions, feel free to open an issue or pull request.
-
-Happy segmenting!
-
+MIT, see [LICENSE](LICENSE).
